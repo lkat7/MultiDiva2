@@ -302,8 +302,10 @@ static void WatchRegion(const char* name, uintptr_t base, size_t size, size_t al
     if (!base)
         return;
     bool any = false;
-    for (size_t off = 0; off < size; off += 0x100) // chunks: the object may be shorter than the span, or have holes
-        any |= SafeCopy(cur.data() + off / 4, (const void*)(base + off), 0x100);
+    for (size_t off = 0; off < size; off += 0x100) { // chunks: the object may be shorter than the span, or have holes
+        size_t n = size - off < 0x100 ? size - off : 0x100; // the last chunk may be short (the stage data is 0x40)
+        any |= SafeCopy(cur.data() + off / 4, (const void*)(base + off), n);
+    }
     if (!any)
         return;
     if (prevBase != base || prev.size() != cur.size()) {

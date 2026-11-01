@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.3.11 (02.11.2026)
+- Fixes the crash of the song select watch in 2.3.9 and 2.3.10: the new 0x40 byte stage data scan copied 0x100 bytes
+  into its 0x40 byte buffer (a buffer overrun in my code). The earlier guess about the selection record in 2.3.10 was
+  wrong; that scan stays at 0x600 bytes.
+
 ## 2.3.10 (02.11.2026)
 - Research: the song select watch crashed the game in 2.3.9. The selection record scan is back to the 0x600 bytes
   that worked before (2.3.8 had widened it to 0x2000, the likeliest cause), and nothing else changed in the watch.
