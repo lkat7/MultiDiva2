@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.2 (02.11.2026)
+- Charts a song doesn't really have are no longer listed. The game keeps an empty placeholder in those slots (level 0,
+  greyed out in song select) and the song check counted it as present, so Easy showed up for songs without one.
+
 ## 2.4.1 (02.11.2026)
 - In the chart row only the host's selected chart keeps its colour, the others are grey (all stay coloured while the
   selection is unknown, e.g. with an older host). The F8 window has a divider between the room status and the options.

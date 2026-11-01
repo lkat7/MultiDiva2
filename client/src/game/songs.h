@@ -23,7 +23,8 @@ int32_t Hovered();
 // Game thread only.
 std::string Title(int32_t pv);
 
-// The chart's level in stars (7.5, 10.0...), -1 if unknown. Read from the pv_db chart struct at a layout taken from
+// The chart's level in stars (7.5, 10.0...), 0 if the song has no playable chart in that slot (an empty one the game
+// greys out), -1 if unknown. Read from the pv_db chart struct at a layout taken from
 // ReDIVA (the Arcade game's decompilation), so it is checked for a sane value and shown only if it is one.
 // Game thread only; cached.
 float Level(int32_t pv, int32_t difficulty, int32_t edition);

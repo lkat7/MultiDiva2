@@ -97,6 +97,8 @@ static std::array<float, 5> SongCharts(int32_t pv)
         if (!songs::Has(pv, diff, edition))
             continue;
         float level = songs::Level(pv, diff, edition);
+        if (level == 0)
+            continue; // an empty slot (the game greys it out): the song doesn't have this chart
         out[i] = level > 0 ? level : 0;
     }
     return cache[pv] = out;

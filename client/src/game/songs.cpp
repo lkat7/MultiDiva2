@@ -187,6 +187,8 @@ float Level(int32_t pv, int32_t difficulty, int32_t edition)
         read = chart && SafeRead((uintptr_t)chart + ChartLevel, half);
         if (read && half >= 1 && half <= 20)
             stars = half / 2.0f;
+        else if (read && half == 0)
+            stars = 0; // the song has an empty chart in this slot: the game greys it out and it can't be played
     }
     // The layout is from the Arcade game's decompilation: the first lookups go to the normal log so a player's log
     // shows whether it holds on this version.
@@ -196,7 +198,8 @@ float Level(int32_t pv, int32_t difficulty, int32_t edition)
         if (stars <= 0)
             loggedRejected++;
         Log("songs: level of pv %d diff %d edition %d: %s (raw %d at chart+0x%zX) -> %s", pv, difficulty, edition,
-            read ? "read" : "unreadable", half, ChartLevel, stars > 0 ? "accepted" : "rejected, not shown");
+            read ? "read" : "unreadable", half, ChartLevel,
+            stars > 0 ? "accepted" : stars == 0 ? "no chart in this slot" : "rejected, not shown");
     }
     cache[key] = stars;
     return stars;
