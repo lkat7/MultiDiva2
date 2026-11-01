@@ -345,3 +345,31 @@ Len, Luka, KAITO, MEIKO, ALL, heart): ALL is always the second to last tab. The 
 
 Confirmed in game (2.3.1 log): pv_db chart level at chart `+0x40` in half stars (pv 96: raw 6/8/10/14 = 3.0/4.0/5.0/7.0,
 EX chart raw 16 = 8.0) and song entry BPM at entry `+0x4C` (pv 96 = 183).
+
+## Song select: what is known (status for "follow the host's song", 2.4.10)
+
+Objects (addresses are per song select session; offsets are stable):
+- **Song select object `pvsel`**: its first 8 bytes are the mode vtable `0x140C837D0` (unverified). The song list object is a
+  member at `pvsel+0x3380`. `rdi` held `pvsel` and `rcx` the list when the highlight was written.
+- **Highlighted song**: int at `list+0xA88` (written by `0x1406DE9F0(list, pv)`, see "Highlight setter"). Derived from the
+  cursor's current item (`[item]` = pv). **Writing it or calling the setter does not move the cursor** (2.4.6): the game
+  writes the cursor's song back and confirming starts the cursor's song.
+- **Song to start copy** `pvsel+0x262A4` follows the highlight live and is `-2` (0xFFFFFFFE) while Random is chosen.
+- **Selected difficulty**: `pvsel+0x262C8` and the stage data header `0x1416E2B90 +0x0` (0..3); `+0x4` = 1 for the Extra
+  chart. Both follow left/right live. The mod reads the stage data (`songs::SelectedChart`).
+- **Sort mode** `pvsel+0x17DFC`: T cycles Star (6) > Singer (1) > Score (2) > Name (0) > Star. Step counter 1,2,3,0 at
+  `pvsel+0x17E0C` and `pvsel+0x262C0`.
+- **Tabs (Q / E)**: the strip depends on the sort. Star: 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10, ALL, heart. Singer: Miku, Rin,
+  Len, Luka, KAITO, MEIKO, ALL, heart. ALL is always the second to last tab, heart the last. Q and E are the game's L (11)
+  and R (12). The tab index field is NOT identified yet.
+- **Counter** "NNN / 492 songs" is the cursor's position in the current (filtered, sorted) list; the list wraps.
+- **Random** moves the cursor to a song at once (one highlight write per second while it spins). The real list order
+  and filter differ per player, so jump by song id, after making sure the song is in the list (ALL tab).
+
+Input: left/right = difficulty (button 5 from `0x1406F030F`, button 6 from `0x1406F02F1`); up/down = song (interval-tapped,
+bit 3/4 of the input object `+0x60`); confirm = button 10 from `0x140669B42`; Q/E = 11/12; T = sort.
+
+Open (what is needed to jump the cursor to a song id): (1) the tab index field and how to set ALL (tab count - 2, or
+wrap with Q from tab 0); (2) the list control's "go to this song" function, the one random landing and the sort/tab
+rebuild use to keep the cursor on a song (it takes a song id or an item pointer); its entry registers, via a watch on its
+first instruction. Tools: write watch + unwound frames (2.4.7), object watch with tapped buttons (2.4.10).
