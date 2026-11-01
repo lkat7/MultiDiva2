@@ -276,13 +276,25 @@ static void DrawLaunchOverride()
                     char hex[16 * 3 + 1] = {};
                     for (int i = 0; i < 16; i++)
                         snprintf(hex + i * 3, 4, "%02X ", now[row + i]);
-                    Log("input: +0x%02zX  %s", row, hex);
+                    // The bits set, as the game's button numbers (ReDIVA InputButton: UP 3, DOWN 4, LEFT 5, RIGHT 6,
+                    // TRIANGLE 7, SQUARE 8, CROSS 9, CIRCLE 10, L 11, R 12).
+                    static const char* names[] = { "TEST", "SERVICE", "START", "UP", "DOWN", "LEFT", "RIGHT", "TRIANGLE",
+                        "SQUARE", "CROSS", "CIRCLE", "L", "R" };
+                    std::string bits;
+                    for (int b = 0; b < 128; b++)
+                        if (now[row + b / 8] & (1 << (b % 8))) {
+                            bits += " " + std::to_string(b);
+                            if (b < (int)(sizeof(names) / sizeof(*names)))
+                                bits += std::string("(") + names[b] + ")";
+                        }
+                    Log("input: +0x%02zX  %s |%s", row, hex, bits.empty() ? " none" : bits.c_str());
                 }
                 memcpy(lastInput, now, sizeof(lastInput));
             }
         }
-        // Where song select keeps the selected difficulty: turn this on in song select and press left/right on the
-        // difficulty a few times (also change song once), then send the log.
+        // Where song select keeps the selected difficulty: turn this on in song select, then use whichever key CHANGES
+        // THE DIFFICULTY (the arrows only move the song list) a few times on a song with all its charts, then send the log.
+        // Also tick "Watch input state" above so the log names the buttons you pressed.
         static bool watchSelect = false;
         if (ImGui::Checkbox("Watch song select for the difficulty (research)", &watchSelect)) {
             songs::SetListWatch(watchSelect);

@@ -345,7 +345,8 @@ static void WatchSongSelect()
     int32_t pv = s_highlighted;
     if (pv != lastPv) {
         lastPv = pv;
-        Log("songs: highlight is now pv %d", pv);
+        Log("songs: highlight is now pv %d (charts: easy %d normal %d hard %d extreme %d extra %d)", pv,
+            (int)Has(pv, 0, 0), (int)Has(pv, 1, 0), (int)Has(pv, 2, 0), (int)Has(pv, 3, 0), (int)Has(pv, 3, 1));
     }
     // The highlighted pv is the int16 at list+0xA88: state next to it is the likely home of the selected difficulty.
     WatchRegion("list", s_listObject, 0x1800, 0xA00, 0xB00, listPrev, listBase);

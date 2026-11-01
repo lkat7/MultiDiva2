@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.3.5 (02.11.2026)
+- Research: the input watch names the buttons in each change, and the song select watch lists which charts each
+  highlighted song has. The 2.3.3 log showed the arrow keys only move the song list, so the key that changes the
+  difficulty still has to be captured.
+
 ## 2.3.4 (02.11.2026)
 - Fixes a build error in 2.3.3 on MSVC (`near` is a macro in `windows.h`).
 
