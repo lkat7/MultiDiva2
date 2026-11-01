@@ -165,11 +165,21 @@ float Level(int32_t pv, int32_t difficulty, int32_t edition)
     if (it != cache.end())
         return it->second;
     float stars = -1;
+    int32_t half = -1;
+    bool read = false;
     if (CodeOk() && pv >= 0 && difficulty >= 0 && Has(pv, difficulty, edition)) {
-        int32_t half = 0;
         void* chart = Chart(Entry(pv), difficulty, edition);
-        if (chart && SafeRead((uintptr_t)chart + ChartLevel, half) && half >= 2 && half <= 20)
+        read = chart && SafeRead((uintptr_t)chart + ChartLevel, half);
+        if (read && half >= 2 && half <= 20)
             stars = half / 2.0f;
+    }
+    // The layout is from the Arcade game's decompilation: the first lookups go to the normal log so a player's log
+    // shows whether it holds on this version.
+    static int logged = 0;
+    if (logged < 12 && Has(pv, difficulty, edition)) {
+        logged++;
+        Log("songs: level of pv %d diff %d edition %d: %s (raw %d at chart+0x%zX) -> %s", pv, difficulty, edition,
+            read ? "read" : "unreadable", half, ChartLevel, stars > 0 ? "accepted" : "rejected, not shown");
     }
     cache[key] = stars;
     return stars;
@@ -182,11 +192,20 @@ int32_t Bpm(int32_t pv)
     if (it != cache.end())
         return it->second;
     int32_t bpm = -1;
+    int32_t v = -1;
+    bool read = false;
     if (CodeOk() && pv >= 0 && Has(pv)) {
-        int32_t v = 0;
-        if (void* entry = Entry(pv))
-            if (SafeRead((uintptr_t)entry + EntryBpm, v) && v >= 30 && v <= 400)
+        if (void* entry = Entry(pv)) {
+            read = SafeRead((uintptr_t)entry + EntryBpm, v);
+            if (read && v >= 30 && v <= 400)
                 bpm = v;
+        }
+    }
+    static int logged = 0;
+    if (logged < 6 && pv >= 0 && Has(pv)) {
+        logged++;
+        Log("songs: bpm of pv %d: %s (raw %d at entry+0x%zX) -> %s", pv, read ? "read" : "unreadable", v, EntryBpm,
+            bpm > 0 ? "accepted" : "rejected, not shown");
     }
     cache[pv] = bpm;
     return bpm;

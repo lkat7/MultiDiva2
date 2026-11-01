@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3.1 (02.11.2026)
+- While the host is only highlighting a song, the room now lists the charts that song has (Easy, Normal, Hard, Extreme,
+  Extra), each in its difficulty's colour, with the level in stars and the BPM when the game's database gives them. A
+  highlight has no single difficulty, so this shows all of them; the one being played shows once the round is picked.
+- The first level and BPM lookups are written to `multidiva.log` (`songs: level of pv ...`) with the raw value read, so
+  a log shows whether the layout taken from the Arcade game holds on your game version.
+
 ## 2.3.0 (01.11.2026)
 
 ### Added

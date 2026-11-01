@@ -29,6 +29,8 @@
 #include <cstring>
 #include <imgui.h>
 #include <imgui_internal.h>
+#include <array>
+#include <map>
 
 namespace md::ui {
 
@@ -79,6 +81,25 @@ static std::string PickDetail(const mp::Pick& p, ImVec4& color)
     if (bpm > 0)
         text += "   BPM " + std::to_string(bpm);
     return text;
+}
+
+// The charts a song has, by difficulty 0..3 and the extra chart (4): -1 = none, 0 = exists (level unknown), else stars.
+// Which charts exist comes from the game's song database like the "missing song" check does; levels need songs::Level.
+static std::array<float, 5> SongCharts(int32_t pv)
+{
+    static std::map<int32_t, std::array<float, 5>> cache; // the song database doesn't change while the game runs
+    auto it = cache.find(pv);
+    if (it != cache.end())
+        return it->second;
+    std::array<float, 5> out = { -1, -1, -1, -1, -1 };
+    for (int i = 0; i < 5; i++) {
+        int diff = i < 4 ? i : 3, edition = i < 4 ? 0 : 1;
+        if (!songs::Has(pv, diff, edition))
+            continue;
+        float level = songs::Level(pv, diff, edition);
+        out[i] = level > 0 ? level : 0;
+    }
+    return cache[pv] = out;
 }
 
 static void InputString(const char* label, std::string& value, size_t max)
@@ -343,6 +364,23 @@ static void DrawRoundStatus(const mp::State& s)
             ImGui::TextColored(Dim, "Highlighted: %s", title.c_str());
         else
             ImGui::TextColored(Dim, "The host is looking at: %s", title.c_str());
+        // Its charts, each in its difficulty's colour (with the level when the game's database gives it).
+        static const char* names[] = { "Easy", "Normal", "Hard", "Extreme", "Extra" };
+        std::array<float, 5> charts = SongCharts(s.hover);
+        for (int i = 0; i < 5; i++) {
+            if (charts[i] < 0)
+                continue;
+            if (charts[i] > 0)
+                ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(DifficultyColor(i)), "%s %.1f", names[i], charts[i]);
+            else
+                ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(DifficultyColor(i)), "%s", names[i]);
+            ImGui::SameLine();
+        }
+        int bpm = songs::Bpm(s.hover);
+        if (bpm > 0)
+            ImGui::TextColored(Dim, "BPM %d", bpm);
+        else
+            ImGui::NewLine();
     }
     std::string missing;
     int missingCount = 0;
@@ -559,6 +597,7 @@ static void DrawScreens(bool* open)
             if (view.songTitle.empty())
                 view.songTitle = !s.hoverTitle.empty() ? s.hoverTitle : titles::Describe(s.hover);
             view.songBpm = songs::Bpm(s.hover);
+            view.charts = SongCharts(s.hover);
         } else if (s.pick) {
             view.songTitle = !s.pick->title.empty() ? s.pick->title : titles::Describe(s.pick->pv);
             view.songDifficulty = s.pick->edition ? 4 : s.pick->difficulty;

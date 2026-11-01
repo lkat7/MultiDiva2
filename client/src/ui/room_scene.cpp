@@ -9,6 +9,7 @@
 #include <cctype>
 #include <cfloat>
 #include <cmath>
+#include <vector>
 #include <imgui.h>
 #include <initializer_list>
 #include <map>
@@ -301,8 +302,51 @@ void SongCard(const Ctx& c, const mp::State& s, const RoomView& view, float x, f
         Spr(c, set::SongSelect, chips[std::clamp(view.songDifficulty, 0, 4)], x - 140 + 705 - margin - chipW,
             py + 40 - chipH / 2, 0.9f);
     }
+    // A highlight has no difficulty yet: list the song's charts, each in its colour.
+    bool hasCharts = false;
+    for (float lv : view.charts)
+        hasCharts |= lv >= 0;
+    if (view.songDifficulty < 0 && (hasCharts || view.songBpm > 0)) {
+        static const char* short_[] = { "Easy", "Normal", "Hard", "Extreme", "Extra" };
+        struct Piece { std::string text; ImU32 color; };
+        std::vector<Piece> pieces;
+        for (int i = 0; i < 5; i++) {
+            if (view.charts[i] < 0)
+                continue;
+            std::string t = short_[i];
+            if (view.charts[i] > 0) {
+                char lv[16];
+                snprintf(lv, sizeof(lv), " %.1f", view.charts[i]);
+                t += lv;
+            }
+            pieces.push_back({ t, DifficultyColor(i) });
+        }
+        if (view.songBpm > 0)
+            pieces.push_back({ "BPM " + std::to_string(view.songBpm), White });
+        Style d;
+        d.font = Font::Bold;
+        d.px = 32;
+        d.outline = IM_COL32(0, 0, 0, 170);
+        d.outlineW = 2;
+        const float room = 705 - 60, gapW = 24;
+        auto total = [&]() {
+            float w = -gapW;
+            for (const Piece& p : pieces)
+                w += TextW(d, p.text.c_str()) + gapW;
+            return w;
+        };
+        while (d.px > 20 && total() > room) // many charts with levels: shrink to fit the plate
+            d.px -= 1;
+        float cx = x - 90;
+        for (const Piece& p : pieces) {
+            d.color = p.color;
+            Text(c, cx, py + 98, p.text.c_str(), d);
+            cx += TextW(d, p.text.c_str()) + gapW;
+        }
+        py += 44;
+    }
     // Difficulty (in its colour), level and tempo under the plate.
-    if (view.songDifficulty >= 0 || view.songBpm > 0) {
+    if (view.songDifficulty >= 0) {
         static const char* names[] = { "Easy", "Normal", "Hard", "Extreme", "Extra Extreme" };
         std::string info;
         if (view.songDifficulty >= 0 && view.songDifficulty < 5) {
