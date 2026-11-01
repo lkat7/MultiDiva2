@@ -331,6 +331,17 @@ static void DrawLaunchOverride()
         static bool watchObject = false;
         if (ImGui::Checkbox("Watch the song select object: tab and sort (research)", &watchObject))
             songs::SetSelectObjectWatch(watchObject);
+        // Where is the highlighted song's audio started? Highlight a song (its preview is playing), press the first
+        // button, then pick a hit and press the second and move the highlight to another song: the log names the code
+        // that writes the new audio name (the preview player). Try hit 1, then 2 ... if nothing is written.
+        if (ImGui::Button("Find preview player (research)"))
+            songs::FindPreviewPlayer();
+        static int previewHit = 1;
+        ImGui::SetNextItemWidth(80);
+        ImGui::InputInt("Hit", &previewHit, 0);
+        ImGui::SameLine();
+        if (ImGui::Button("Watch preview hit (research)"))
+            songs::WatchPreviewHit(previewHit);
         // The player profile: type the in-game profile name, then find it in memory (UTF-8 and UTF-16 hits are logged).
         static char profileName[64] = "";
         ImGui::SetNextItemWidth(220);

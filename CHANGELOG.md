@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.5.0 (02.11.2026)
+- Research toward hearing the host's song: "Find preview player" searches the game's memory for the highlighted song's
+  audio file name and logs every place it is kept besides the song database; "Watch preview hit" puts the write watch
+  (with the exact call chain) on one of them, so moving the highlight reveals the code that starts the preview.
+
 ## 2.4.10 (02.11.2026)
 - Research: the song select object watch logs the buttons you tap next to the fields that change, and logs values up to
   15 (a tab index can reach 10). From the 2.4.9 log: sort mode is `object +0x17DFC` (Star 6, Singer 1, Score 2, Name 0),
