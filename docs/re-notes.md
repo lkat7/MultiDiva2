@@ -289,11 +289,13 @@ Song select input (2.3.1 log, button log on): `button_tapped` button 5 is checke
 RIGHT 6), so they are the left/right handlers that change the selection. Chart struct: `+0x00` difficulty, `+0x04`
 edition, `+0x40` level (half stars), `+0x44` level sort index.
 
-2.3.3 song select log (left/right change the difficulty, up/down the song): the song list object's int16 at `+0xA88`
-is the highlighted pv. `+0xADC` (and a copy at `+0xAFC`) holds a 4-char tag `p_02`..`p_04`: LEFT lowers and RIGHT raises
-it, with wrap-around, and it moves when the song changes (the difficulty clamps to the new song's charts), so it is the
-candidate for the selected difficulty. Its digit has not been mapped to a difficulty yet: `PvGameInit` now logs the tag
-next to the difficulty actually started, which builds the mapping.
+Song select difficulty (2.3.3 / 2.3.6 logs): LEFT/RIGHT change the difficulty (button 5 from `0x1406F030F`, button 6 from
+`0x1406F02F1`), UP/DOWN the song, confirm is button 10 from `0x140669B42`; a started round's `PvGameInit` showed
+diff 0,1,2,3,3+EX after the matching number of right taps. The selected difficulty is NOT in the song list object (the
+highlight hook's rcx: `+0xA88` is the highlighted pv, `+0xADC` a `p_02`..`p_04` tag that is not the difficulty) nor in
+the first 0x600 bytes of the selection record at `0x141750890`: taps changed nothing in either. The song select
+object is recreated every time song select opens. Next step: a write watch on the stage entry's difficulty field,
+logging registers and the code before the write, to find where the confirm handler reads it from.
 
 Confirmed in game (2.3.1 log): pv_db chart level at chart `+0x40` in half stars (pv 96: raw 6/8/10/14 = 3.0/4.0/5.0/7.0,
 EX chart raw 16 = 8.0) and song entry BPM at entry `+0x4C` (pv 96 = 183).

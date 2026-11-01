@@ -222,6 +222,14 @@ static void DrawLaunchOverride()
             SafeRead(addr::StageData + stage::IndexOffset, index);
             watch::Start(StageEntryAddress(index) + stage::Modules);
         }
+        // Which game code writes the stage entry's difficulty (song select copies the selected difficulty there when
+        // you confirm): start it in song select, change the difficulty with left/right, confirm, send the log. Each
+        // hit logs the registers and the code before the write, which shows where the difficulty is read from.
+        if (ImGui::Button("Watch difficulty write (research)")) {
+            int32_t index = 0;
+            SafeRead(addr::StageData + stage::IndexOffset, index);
+            watch::Start(StageEntryAddress(index) + stage::Difficulty);
+        }
         // Song select's per-performer outfit selection for the highlighted song (0x141750890 + 0x1C0).
         if (ImGui::Button("Watch outfit selection (research)"))
             watch::Start(0x141750A50, 40);

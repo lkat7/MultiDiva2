@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.3.7 (02.11.2026)
+- Research: "Watch difficulty write" (Ctrl+F8, `research=1`) logs the registers and the code around each write to the
+  stage entry's difficulty, to find where song select keeps the selected difficulty. The write watch logs this for every
+  watch. The tag experiment of 2.3.6 is removed (the tag was not the difficulty).
+
 ## 2.3.6 (02.11.2026)
 - Research: song select's left/right tag (`p_02`..`p_04`, probably the selected difficulty) is logged when it changes
   and next to the difficulty of every round started, to map one to the other.

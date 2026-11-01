@@ -2,6 +2,7 @@
 #include "../core/log.h"
 
 #include <atomic>
+#include <cstring>
 #include <windows.h>
 #include <tlhelp32.h>
 
@@ -51,6 +52,26 @@ static LONG CALLBACK OnException(EXCEPTION_POINTERS* info)
         stack[len] = 0;
         Log("watch #%d: thread %lu wrote %d after %llX; stack:%s", hit + 1, GetCurrentThreadId(), value,
             (unsigned long long)ctx->Rip, stack);
+        // The registers and the code just before Rip, to read where the written value came from (a load from some
+        // object's field: the base register's value gives that object's address).
+        auto q = [](DWORD64 v) { return (unsigned long long)v; };
+        Log("watch #%d: rax=%llX rbx=%llX rcx=%llX rdx=%llX rsi=%llX rdi=%llX rbp=%llX", hit + 1, q(ctx->Rax), q(ctx->Rbx),
+            q(ctx->Rcx), q(ctx->Rdx), q(ctx->Rsi), q(ctx->Rdi), q(ctx->Rbp));
+        Log("watch #%d: r8=%llX r9=%llX r10=%llX r11=%llX r12=%llX r13=%llX r14=%llX r15=%llX", hit + 1, q(ctx->R8), q(ctx->R9),
+            q(ctx->R10), q(ctx->R11), q(ctx->R12), q(ctx->R13), q(ctx->R14), q(ctx->R15));
+        uint8_t code[80] = {};
+        bool ok = true;
+        __try {
+            memcpy(code, (const void*)(ctx->Rip - sizeof(code)), sizeof(code));
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            ok = false;
+        }
+        if (ok) {
+            char hex[sizeof(code) * 2 + 1];
+            for (size_t i = 0; i < sizeof(code); i++)
+                wsprintfA(hex + i * 2, "%02X", code[i]);
+            Log("watch #%d: code before %llX: %s", hit + 1, q(ctx->Rip), hex);
+        }
     }
     if (hit + 1 >= s_maxHits)
         ctx->Dr7 &= ~1ull; // enough: disarm on this thread (Stop clears the others)
