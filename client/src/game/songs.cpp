@@ -337,7 +337,8 @@ static void WatchRegion(const char* name, uintptr_t base, size_t size, size_t al
     for (size_t i = 0; i < cur.size(); i++) {
         if (cur[i] == prev[i] || cur[i] == 0x7FFFFFFF || prev[i] == 0x7FFFFFFF)
             continue;
-        bool small = cur[i] >= 0 && cur[i] <= 4 && prev[i] >= 0 && prev[i] <= 4;
+        // Small numbers (0..9) that step between values: a difficulty, a tab or a sort mode looks like that.
+        bool small = cur[i] >= 0 && cur[i] <= 9 && prev[i] >= 0 && prev[i] <= 9;
         bool inSpan = i * 4 >= allFrom && i * 4 < allTo;
         if ((small || inSpan) && lines++ < 200) // at most 200 lines a second: animation counters can be noisy
             Log("songs: %s +0x%03zX: %d -> %d (0x%X -> 0x%X)%s", name, i * 4, prev[i], cur[i], (unsigned)prev[i],

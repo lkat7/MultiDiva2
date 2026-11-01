@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.4.8 (02.11.2026)
+- Research: the song select watch logs small numbers up to 9 (was 4), to find the active character tab and sort mode.
+
 ## 2.4.7 (02.11.2026)
 - Research: the write watch walks the stack with Windows' unwind tables, so it logs the exact call chain with each
   function's start address, and dumps the first 128 bytes of every function it meets. The highlight watch stops by itself
