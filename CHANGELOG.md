@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.5.0 (02.11.2026)
+## 2.4.11 (02.11.2026)
 - Research toward hearing the host's song: "Find preview player" searches the game's memory for the highlighted song's
   audio file name and logs every place it is kept besides the song database; "Watch preview hit" puts the write watch
   (with the exact call chain) on one of them, so moving the highlight reveals the code that starts the preview.
