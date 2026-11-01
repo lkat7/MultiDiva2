@@ -11,6 +11,7 @@
 #include "../game/titles.h"
 #include "../net/host.h"
 #include "../net/ws_client.h"
+#include "../ui/own_avatar.h"
 
 #include <algorithm>
 #include <cstring>
@@ -329,6 +330,7 @@ static void OnStart(const json& d)
     s.scores.clear();
     s.showResults = false;
     s_finishSent = false;
+    s.finishedSelf = false;
     s_lastScoreSent = 0;
 
     if (s_hostStartSent) {
@@ -484,6 +486,7 @@ static void SendFinish(bool fromResultScreen)
     if (s_finishSent)
         return;
     s_finishSent = true;
+    s.finishedSelf = true;
 
     const GameState& g = g_session.state;
     json result;
@@ -511,6 +514,9 @@ void OnGameEvent(const GameEvent& e)
 
     switch (e.type) {
     case GameEventType::PvGameInit: {
+        // Anyone but the host starting a song on their own plays it solo: the room never hears of it.
+        if (!e.overridden && !IsHost() && !s.inRound && !s.startPending)
+            AddChat(ChatLine::System, "", "You started a song on your own: it's a solo play, not part of the room's round.");
         // The host started a song in their own game: that launch is the round start.
         if (e.overridden || !IsHost() || s.roomState != "lobby")
             break;
@@ -583,6 +589,8 @@ void Tick()
             json hello = { { "name", GetConfig().name }, { "version", ProtocolVersion },
                 { "steam", steamId ? std::to_string(steamId) : "" },
                 { "resumable", true } }; // we reconnect with the token: the server may hold our slot after a drop
+            if (const std::string& avatar = ui::OwnAvatarBase64(); !avatar.empty())
+                hello["avatar"] = avatar; // avatar.png from the mod folder, for players without (or instead of) Steam's
             if (s.reconnecting)
                 hello["resume"] = s_resumeToken;
             Send("hello", std::move(hello));

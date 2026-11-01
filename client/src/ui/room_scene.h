@@ -20,11 +20,16 @@ struct RoomView {
     // The song on the title plate: the one the host has highlighted in song select (live), else the last pick.
     std::string songTitle;  // "" = none: `songHint` instead
     int songDifficulty = -1; // 0..4 (4 = Extra Extreme) for the chip, -1 = none (a highlight has no difficulty)
+    float songLevel = -1;    // stars of that chart (7.5...), -1 = unknown
+    int songBpm = -1;        // tempo, -1 = unknown
     std::string songHint;
     int songPv = -1; // its jacket, -1 = none
     std::string inviteUrl; // we host this server: the address to share (Copy invite in the header)
     bool inviteCopied = false;
 };
+
+// The colour a difficulty is shown in (0..4, 4 = Extra Extreme), ABGR like IM_COL32.
+unsigned int DifficultyColor(int difficulty);
 
 struct RoomAction {
     enum Kind { None, ToggleReady, PickSong, Leave, GiveHost, Kick, Chat, ToggleBot, ToggleOutfits, ToggleLeaderboard, ToggleGaps,

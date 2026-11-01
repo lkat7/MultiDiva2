@@ -82,6 +82,7 @@ struct State {
     bool showResults = false;
 
     bool inRound = false;      // this player is part of the round being played
+    bool finishedSelf = false; // we reported our result (failed, quit or finished) and the others may still be playing
     bool startPending = false; // `start` received, waiting to reach song select
     std::string roomNotice;    // why we are out of the room (kicked), shown on the join screen
     std::vector<RoomInfo> rooms; // the server's open rooms while we're connected but not in one

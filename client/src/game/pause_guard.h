@@ -13,6 +13,13 @@ void Install();
 // Set every frame: true while this player is in a multiplayer round and the song is playing.
 void SetGuardActive(bool active);
 void SetForced(bool forced); // Ctrl+F8 debug: guard on outside multiplayer too, for testing alone
+
+// Research (Ctrl+F8 with research=1): log the return address and button id of every button the game reports as
+// tapped, to find which call checks song select's confirm button (a non-host's solo start could be blocked there).
+void SetButtonLog(bool on);
+// The game's input object, as seen in the last button check; null before the first one. Its first bytes are the
+// button bitsets (ReDIVA InputState: Tapped, Released, Down...), for finding which bit is a held button.
+const void* InputObject();
 bool IsForced();
 bool GuardActive(); // in a multiplayer round (or the Ctrl+F8 test mode), song playing and not paused
 

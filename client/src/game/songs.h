@@ -18,7 +18,19 @@ int32_t Hovered();
 // Game thread only.
 std::string Title(int32_t pv);
 
+// The chart's level in stars (7.5, 10.0...), -1 if unknown. Read from the pv_db chart struct at a layout taken from
+// ReDIVA (the Arcade game's decompilation), so it is checked for a sane value and shown only if it is one.
+// Game thread only; cached.
+float Level(int32_t pv, int32_t difficulty, int32_t edition);
+
+// The song's tempo in BPM, -1 if unknown (same caveat as Level). Game thread only; cached.
+int32_t Bpm(int32_t pv);
+
 // Research: logs every std::string inside the song's pv_db entry (to find the title fields).
 void DumpEntryStrings(int32_t pv);
+
+// Research: logs the start of the song's pv_db entry and of its chart as int32s, to confirm the Level and Bpm offsets
+// against the star rating and tempo the game shows.
+void DumpChart(int32_t pv, int32_t difficulty, int32_t edition);
 
 } // namespace md::songs

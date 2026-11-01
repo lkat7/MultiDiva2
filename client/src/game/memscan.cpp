@@ -247,6 +247,31 @@ void FindMenuSpriteSet()
     }
 }
 
+void FindText(const std::string& text)
+{
+    if (text.empty())
+        return;
+    std::wstring wide;
+    int n = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), (int)text.size(), nullptr, 0);
+    wide.resize(n > 0 ? (size_t)n : 0);
+    if (n > 0)
+        MultiByteToWideChar(CP_UTF8, 0, text.c_str(), (int)text.size(), wide.data(), n);
+    const uintptr_t exe = (uintptr_t)GetModuleHandleW(nullptr);
+    DWORD t0 = GetTickCount();
+    for (int pass = 0; pass < 2; pass++) {
+        const void* pattern = pass == 0 ? (const void*)text.data() : (const void*)wide.data();
+        size_t size = pass == 0 ? text.size() : wide.size() * sizeof(wchar_t);
+        static uintptr_t hits[16];
+        size_t nh = FindInto(pattern, size, 16);
+        memcpy(hits, s_hits, nh * sizeof(uintptr_t));
+        Log("memscan: \"%s\" as %s: %zu hit(s) (%lu ms)", text.c_str(), pass == 0 ? "UTF-8" : "UTF-16", nh, GetTickCount() - t0);
+        for (size_t k = 0; k < nh; k++) {
+            Log("memscan:   hit %llX (exe %+lld)", (unsigned long long)hits[k], (long long)(hits[k] - exe));
+            Dump("around", hits[k] - 0x20, 0x80);
+        }
+    }
+}
+
 void FindFontMap()
 {
     // Glyphs 'A'..'D' of the game's 36 px Latin fonts (fontmap.bin maps 20 and 21 agree on these), as parsed into

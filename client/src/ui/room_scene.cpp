@@ -301,6 +301,29 @@ void SongCard(const Ctx& c, const mp::State& s, const RoomView& view, float x, f
         Spr(c, set::SongSelect, chips[std::clamp(view.songDifficulty, 0, 4)], x - 140 + 705 - margin - chipW,
             py + 40 - chipH / 2, 0.9f);
     }
+    // Difficulty (in its colour), level and tempo under the plate.
+    if (view.songDifficulty >= 0 || view.songBpm > 0) {
+        static const char* names[] = { "Easy", "Normal", "Hard", "Extreme", "Extra Extreme" };
+        std::string info;
+        if (view.songDifficulty >= 0 && view.songDifficulty < 5) {
+            info = names[view.songDifficulty];
+            if (view.songLevel > 0) {
+                char lv[24];
+                snprintf(lv, sizeof(lv), "  %.1f", view.songLevel);
+                info += lv;
+            }
+        }
+        if (view.songBpm > 0)
+            info += std::string(info.empty() ? "" : "     ") + "BPM " + std::to_string(view.songBpm);
+        Style d;
+        d.font = Font::Bold;
+        d.px = 34;
+        d.color = view.songDifficulty >= 0 ? DifficultyColor(view.songDifficulty) : White;
+        d.outline = IM_COL32(0, 0, 0, 170);
+        d.outlineW = 2;
+        Text(c, x - 90, py + 98, info.c_str(), d);
+        py += 44; // the status line moves down
+    }
     if (!view.status.empty()) {
         Style h;
         h.font = Font::Thin;
@@ -650,6 +673,18 @@ void SettingsMenu(const Ctx& c, const RoomView& view, RoomAction& action)
 }
 
 } // namespace
+
+unsigned int DifficultyColor(int d)
+{
+    switch (d) {
+    case 0: return IM_COL32(90, 200, 255, 255);  // easy: blue
+    case 1: return IM_COL32(110, 225, 90, 255);  // normal: green
+    case 2: return IM_COL32(255, 190, 60, 255);  // hard: orange
+    case 3: return IM_COL32(255, 85, 100, 255);  // extreme: red
+    case 4: return IM_COL32(205, 120, 255, 255); // extra extreme: purple
+    }
+    return IM_COL32(255, 255, 255, 255);
+}
 
 RoomAction DrawRoomScene(const mp::State& s, const RoomView& view)
 {

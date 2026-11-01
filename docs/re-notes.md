@@ -267,3 +267,19 @@ ExPatch, MMPlusMods, DivaModLoader and about 30 other open Mega Mix+ plugins: no
 apart from standard API calls (Direct3D, ImGui backends, Windows) and DivaModLoader's credited `helpers.h`. A few
 game addresses also appear in other mods (the stage data getter, the sprite set loader, `play_se`, the pause button
 check, the song select start builder): they are the same game functions, found here independently as described.
+
+## ReDIVA layouts to confirm on Mega Mix+ (2.3.0 research)
+
+ReDIVA (github.com/korenkonder/ReDIVA) is the decompilation of the Arcade game, so these are leads, not facts. The
+song entry's first fields already match this document (name `+0x08`, second string `+0x28`, file name `+0x50`).
+- `pv_db_pv` (`src/CRE/pv_db.hpp`): `id` +0x00, `date` +0x04, `song_name` +0x08, `song_name_reading` +0x28,
+  `remix_parent` +0x48, `bpm` +0x4C, `song_file_name` +0x50, ..., `difficulty[5]` (vectors of `pv_db_pv_difficulty`).
+  `songs::Bpm` reads +0x4C and accepts 30..400.
+- `pv_db_pv_difficulty`: `difficulty`, `edition`, `attribute` (type + bitset<128>), `script_file_name` (std::string),
+  `level` (`pv_level`, half stars: 0x0F = 7.5, 0x14 = 10.0), `level_sort_index`, ..., `songinfo` (music, lyrics, arranger...
+  for artist credits). `songs::Level` reads +0x40 of the chart and accepts 2..20.
+- `InputState` (`src/ReDIVA/input_state.hpp`): bitsets Tapped, Released, Down, DownPrev, DoubleTapped, Hold... of 111
+  buttons, 16 bytes each from +0x00 (Down estimated at +0x20). The `button_tapped` hook sees the object as its first argument.
+- `PlayerData` (`player_data.hpp`): `player_name`, `level`, `level_name`, module equips, via `player_data_array_get`.
+- `pv_game_data`: `life_gauge`, `life_gauge_border`, `hit_count[5]`, `chance_point`, `no_fail`, `no_clear`, ...
+Debug panel (Ctrl+F8, research=1) buttons log what is needed to confirm each one.

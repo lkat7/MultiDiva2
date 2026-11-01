@@ -13,6 +13,7 @@
 #include "../game/memory.h"
 #include "../game/pause_guard.h"
 #include "../game/session.h"
+#include "../game/songs.h"
 #include "../game/steam.h"
 #include "../game/sync_start.h"
 #include "../game/titles.h"
@@ -59,6 +60,25 @@ static std::string PickName(const mp::Pick& p)
 {
     std::string title = !p.title.empty() ? p.title : titles::Describe(p.pv);
     return title + " (" + (p.edition ? "Extra " : "") + DifficultyName(p.difficulty) + ")";
+}
+
+// "Extreme  9.5   BPM 160" for the pick, with the difficulty's colour; the level and tempo only when the game's
+// database gave a sane value (songs::Level / songs::Bpm).
+static std::string PickDetail(const mp::Pick& p, ImVec4& color)
+{
+    int d = p.edition ? 4 : p.difficulty;
+    color = ImGui::ColorConvertU32ToFloat4(DifficultyColor(d));
+    std::string text = DifficultyName(d);
+    float level = songs::Level(p.pv, p.difficulty, p.edition);
+    if (level > 0) {
+        char lv[24];
+        snprintf(lv, sizeof(lv), "  %.1f", level);
+        text += lv;
+    }
+    int bpm = songs::Bpm(p.pv);
+    if (bpm > 0)
+        text += "   BPM " + std::to_string(bpm);
+    return text;
 }
 
 static void InputString(const char* label, std::string& value, size_t max)
@@ -363,8 +383,12 @@ static void DrawRoundStatus(const mp::State& s)
         ImGui::TextColored(Dim, ready ? "Stay on song select: the song starts by itself." : "Tick when you're on song select.");
     }
 
-    if (s.pick)
+    if (s.pick) {
         ImGui::TextColored(Dim, "Last song: %s", PickName(*s.pick).c_str());
+        ImVec4 detailColor;
+        std::string detail = PickDetail(*s.pick, detailColor);
+        ImGui::TextColored(detailColor, "%s", detail.c_str());
+    }
 }
 
 static void DrawChat(const mp::State& s)
@@ -534,9 +558,12 @@ static void DrawScreens(bool* open)
             view.songTitle = titles::Find(s.hover);
             if (view.songTitle.empty())
                 view.songTitle = !s.hoverTitle.empty() ? s.hoverTitle : titles::Describe(s.hover);
+            view.songBpm = songs::Bpm(s.hover);
         } else if (s.pick) {
             view.songTitle = !s.pick->title.empty() ? s.pick->title : titles::Describe(s.pick->pv);
             view.songDifficulty = s.pick->edition ? 4 : s.pick->difficulty;
+            view.songLevel = songs::Level(s.pick->pv, s.pick->difficulty, s.pick->edition);
+            view.songBpm = songs::Bpm(s.pick->pv);
         } else {
             view.songHint = mp::IsHost() ? "Open song select to pick a song" : "The host is picking a song...";
         }
@@ -797,8 +824,13 @@ static void DrawResults(const mp::State& s)
         ImGui::End();
         return;
     }
-    if (s.pick)
+    if (s.pick) {
         ImGui::TextColored(Accent, "%s", PickName(*s.pick).c_str());
+        ImVec4 detailColor;
+        std::string detail = PickDetail(*s.pick, detailColor);
+        ImGui::SameLine();
+        ImGui::TextColored(detailColor, "%s", detail.c_str());
+    }
     if (ImGui::BeginTable("results", 7, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingFixedFit)) {
         ImGui::TableSetupColumn("#");
         ImGui::TableSetupColumn("Player");
@@ -924,8 +956,8 @@ void DrawRoundOverlays()
         DrawWaitingBanner(s);
     if (!s.inRound)
         ResetLeaderboard();
-    else if (GetConfig().showLeaderboard && g_session.inSong && !s.scores.empty())
-        DrawLeaderboard(s);
+    else if (GetConfig().showLeaderboard && (g_session.inSong || s.finishedSelf) && !s.showResults && !s.scores.empty())
+        DrawLeaderboard(s); // also after we failed or quit: the others are still playing
     if (s.showResults && !g_session.inSong)
         DrawResults(s);
     DrawConnectionLost(s);

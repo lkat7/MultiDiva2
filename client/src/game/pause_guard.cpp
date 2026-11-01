@@ -103,9 +103,31 @@ static void __fastcall RequestPauseHook(void* iface, bool flag)
     s_requestOriginal(iface, flag);
 }
 
+static std::atomic<bool> s_buttonLog{false};
+static std::atomic<const void*> s_inputObject{nullptr};
+
+void SetButtonLog(bool on)
+{
+    if (s_buttonLog.exchange(on) != on)
+        Log("pause guard: button log %s", on ? "on" : "off");
+}
+const void* InputObject() { return s_inputObject; }
+
 static bool __fastcall ButtonHook(void* input, int button)
 {
     bool pressed = s_buttonOriginal(input, button);
+    s_inputObject = input;
+    if (pressed && s_buttonLog) {
+        // One line per distinct (caller, button) per half second.
+        static uintptr_t lastRet = 0;
+        static int lastButton = -1;
+        static DWORD lastTick = 0;
+        uintptr_t ret = (uintptr_t)_ReturnAddress();
+        if (ret != lastRet || button != lastButton || GetTickCount() - lastTick > 500) {
+            lastRet = ret, lastButton = button, lastTick = GetTickCount();
+            Log("buttons: tapped %d (0x%X) checked from %llX", button, button, (unsigned long long)ret);
+        }
+    }
     if (!pressed || (uintptr_t)_ReturnAddress() != addr::PauseButtonCheckRet || !(s_guard || s_forced))
         return pressed;
     bool allow = AllowPause();

@@ -5,7 +5,9 @@
 #include "../core/config.h"
 #include "../core/log.h"
 #include "../game/launch.h"
+#include "../game/memory.h"
 #include "../game/memscan.h"
+#include "../mp/multiplayer.h"
 #include "../game/pause_guard.h"
 #include "../game/session.h"
 #include "../game/sigs.h"
@@ -14,6 +16,8 @@
 #include "../game/watch.h"
 
 #include <cstdarg>
+#include <cstdio>
+#include <cstring>
 #include <windows.h>
 #include <imgui.h>
 
@@ -241,6 +245,48 @@ static void DrawLaunchOverride()
         // The pause menu task's state (TaskPauseManagerSwitch + 0x70): who opens it on alt-tab.
         if (ImGui::Button("Watch pause menu state (research)"))
             watch::Start(0x14CC0CA90 + 0x70, 12);
+
+        // ---- layouts taken from ReDIVA (the Arcade game), to confirm on Mega Mix+ ----
+        // Level and BPM: the song's pv_db entry and chart struct as int32s. Compare with the star rating and tempo the
+        // game shows for that chart: the number is at the offset songs.cpp assumes (EntryBpm 0x4C, ChartLevel 0x40;
+        // the level is in half stars, 15 = 7.5).
+        if (ImGui::Button("Dump pick/highlight entry + chart (research)")) {
+            const mp::State& ms = mp::Get();
+            int32_t pv = ms.pick ? ms.pick->pv : songs::Hovered();
+            if (pv >= 0)
+                songs::DumpChart(pv, ms.pick ? ms.pick->difficulty : 3, ms.pick ? ms.pick->edition : 0);
+            else
+                Log("songs: nothing picked or highlighted to dump");
+        }
+        // Button presses: which call checks song select's confirm button (press Enter / Cross on song select).
+        static bool buttonLog = false;
+        if (ImGui::Checkbox("Log button presses (research)", &buttonLog))
+            pause::SetButtonLog(buttonLog);
+        // The input object's bitsets: tap, hold and release buttons while playing and read the changed bytes in the log.
+        static bool watchInput = false;
+        static uint8_t lastInput[0x80] = {};
+        ImGui::Checkbox("Watch input state while pressing buttons (research)", &watchInput);
+        if (watchInput) {
+            uint8_t now[sizeof(lastInput)] = {};
+            if (const void* input = pause::InputObject(); input && SafeCopy(now, input, sizeof(now))) {
+                for (size_t row = 0; row < sizeof(now); row += 16) {
+                    if (memcmp(now + row, lastInput + row, 16) == 0)
+                        continue;
+                    char hex[16 * 3 + 1] = {};
+                    for (int i = 0; i < 16; i++)
+                        snprintf(hex + i * 3, 4, "%02X ", now[row + i]);
+                    Log("input: +0x%02zX  %s", row, hex);
+                }
+                memcpy(lastInput, now, sizeof(lastInput));
+            }
+        }
+        // The player profile: type the in-game profile name, then find it in memory (UTF-8 and UTF-16 hits are logged).
+        static char profileName[64] = "";
+        ImGui::SetNextItemWidth(220);
+        ImGui::InputText("Profile name", profileName, sizeof(profileName));
+        ImGui::SameLine();
+        if (ImGui::Button("Find in memory") && profileName[0])
+            memscan::FindText(profileName);
     }
 
     ImGui::Separator();

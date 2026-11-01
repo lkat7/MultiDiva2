@@ -14,7 +14,7 @@ Join a room with friends, the host picks a song, and it starts for everyone at t
 - Everyone plays with their own outfits, or with the host's
 - Warns when someone in the room doesn't have the song the host is looking at (custom song packs for example)
 - The host can hand over host or kick players (right-click a player)
-- Steam profile pictures
+- Steam profile pictures, or your own: drop an `avatar.png` next to `MultiDiva.dll` (it is shrunk to fit)
 - **Reconnecting:** if your connection drops (mobile data, wifi hiccup), the mod retries for about a minute and puts you back in your room and round with your score. Needs the 2.2.0 server and client
 - Pausing is blocked during a multiplayer round (press Esc twice to pause anyway), and alt-tab doesn't pause either
 - **Host a server** in one click: runs a small server on your PC with a free Cloudflare tunnel, so friends can join from anywhere without router setup

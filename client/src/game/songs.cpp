@@ -137,6 +137,81 @@ static bool ReadStdString(uintptr_t at, std::string& out)
     return true;
 }
 
+static bool CodeOk()
+{
+    static const bool ok = CodeIs(addr::PvDb, addr::PvDbBytes) && CodeIs(addr::PvEntry, addr::PvEntryBytes)
+        && CodeIs(addr::PvChart, addr::PvChartBytes);
+    return ok;
+}
+
+// pv_db_pv, in ReDIVA's order: id (int32) +0x00, date +0x04, song_name (std::string, 32 bytes) +0x08, song_name_reading
+// +0x28, remix_parent +0x48, bpm +0x4C, song_file_name +0x50 (the strings match docs/re-notes.md).
+constexpr size_t EntryBpm = 0x4C;
+// pv_db_pv_difficulty: difficulty +0x00, edition +0x04, attribute (type + bitset<128>, 24 bytes) +0x08,
+// script_file_name (std::string) +0x20, level (pv_level, half stars: 0x0F = 7.5) +0x40. NOT confirmed on Mega Mix+:
+// the debug panel's chart dump is how to check it.
+constexpr size_t ChartLevel = 0x40;
+
+static void* Chart(void* entry, int32_t difficulty, int32_t edition)
+{
+    return entry ? ((PvChartFn)addr::PvChart)(entry, difficulty, edition) : nullptr;
+}
+
+float Level(int32_t pv, int32_t difficulty, int32_t edition)
+{
+    static std::map<uint64_t, float> cache;
+    uint64_t key = (uint64_t)(uint32_t)pv << 8 | (uint32_t)(difficulty & 15) << 4 | (uint32_t)(edition & 15);
+    auto it = cache.find(key);
+    if (it != cache.end())
+        return it->second;
+    float stars = -1;
+    if (CodeOk() && pv >= 0 && difficulty >= 0 && Has(pv, difficulty, edition)) {
+        int32_t half = 0;
+        void* chart = Chart(Entry(pv), difficulty, edition);
+        if (chart && SafeRead((uintptr_t)chart + ChartLevel, half) && half >= 2 && half <= 20)
+            stars = half / 2.0f;
+    }
+    cache[key] = stars;
+    return stars;
+}
+
+int32_t Bpm(int32_t pv)
+{
+    static std::map<int32_t, int32_t> cache;
+    auto it = cache.find(pv);
+    if (it != cache.end())
+        return it->second;
+    int32_t bpm = -1;
+    if (CodeOk() && pv >= 0 && Has(pv)) {
+        int32_t v = 0;
+        if (void* entry = Entry(pv))
+            if (SafeRead((uintptr_t)entry + EntryBpm, v) && v >= 30 && v <= 400)
+                bpm = v;
+    }
+    cache[pv] = bpm;
+    return bpm;
+}
+
+void DumpChart(int32_t pv, int32_t difficulty, int32_t edition)
+{
+    if (!CodeOk() || !Has(pv))
+        return;
+    void* entry = Entry(pv);
+    void* chart = Chart(entry, difficulty, edition);
+    Log("songs: pv %d diff %d edition %d: entry %p chart %p, level %.1f bpm %d", pv, difficulty, edition, entry, chart,
+        Level(pv, difficulty, edition), Bpm(pv));
+    auto dump = [](const char* what, void* base, size_t bytes) {
+        for (size_t off = 0; base && off < bytes; off += 16) {
+            int32_t w[4] = {};
+            if (!SafeRead((uintptr_t)base + off, w))
+                break;
+            Log("songs:   %s +0x%03zX: %d %d %d %d", what, off, w[0], w[1], w[2], w[3]);
+        }
+    };
+    dump("entry", entry, 0x80);
+    dump("chart", chart, 0x100);
+}
+
 std::string Title(int32_t pv)
 {
     // pv_db entries are 0x3E0 bytes; +0x08 is the song name as song select shows it (the game's language),
