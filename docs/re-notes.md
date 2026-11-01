@@ -389,3 +389,13 @@ size `+0x10`, capacity `+0x18`), `+0x20` pointer to the stream object, `+0x28` /
 `+0x2C` a float 172.7 (length of the track?), `+0x30` a float that counts up in real time (35.8, then 38.1 two seconds
 later: the playback position), `+0x50` the state, which the update loop rewrites every frame (0 then 1), so a write watch
 on it only shows that loop. Players 1 and 2 were idle (state 0, nothing playing).
+
+## Sound stream players, read from the 16 MB dump (static, capstone)
+
+- `0x1405AEDA0` = `GetStreamPlayer(int index)`: returns `0x14CBFF0A0 + index*0x58` for index 0..2, else null.
+- `0x1405AF2A0` = per-player per-frame update (fade counter at +0x44, state at +0x50, std::string name at +0x00).
+- `0x1405AED20` / `0x1405AED70` = update-all / reset-all loops (3 players, stride 0x58).
+- `0x1405AB150..0x1405AB250` are thin wrappers `Xxx(index)` calling `GetStreamPlayer` then `0x1405AF010/110/140/150/1B0` (is-playing style queries).
+- `0x1405AB7A0` is a sound-effect cue map loader, `0x1405AFD30` returns a volume-config struct (not the players). Neither is the play function.
+- Only 9 call sites use `GetStreamPlayer`, none sets the file name. The play function therefore writes the player directly (e.g. via a different accessor/inlined index math), so it cannot be found by xref alone.
+- Next step: run "Watch that player's file name" (F8, 2.4.14) while a preview starts; its call chain names the play function.
