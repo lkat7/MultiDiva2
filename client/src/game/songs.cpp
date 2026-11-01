@@ -1,5 +1,6 @@
 #include "songs.h"
 #include "launch.h"
+#include "watch.h"
 #include "memory.h"
 #include "../core/log.h"
 
@@ -347,6 +348,21 @@ static void WatchRegion(const char* name, uintptr_t base, size_t size, size_t al
 
 uintptr_t ListObject() { return s_listObject; }
 
+static std::atomic<bool> s_highlightWatch{false};
+
+bool StartHighlightWatch()
+{
+    uintptr_t list = s_listObject;
+    if (!list || !launch::InSongSelect()) {
+        Log("watch: no song list object yet, open song select first");
+        return false;
+    }
+    watch::SetHitCallback(nullptr);
+    bool ok = watch::Start(list + 0xA88, 80);
+    s_highlightWatch = ok;
+    return ok;
+}
+
 bool SetHighlightTest(int32_t pv)
 {
     // 0x1406DE9F0(list, pv): push rbx; sub rsp,60h; mov rax,[rip+...] (stack cookie). Its writes to list+0xA88 were
@@ -398,6 +414,10 @@ void Tick()
 {
     if (s_listWatch)
         WatchSongSelect();
+    if (s_highlightWatch && !launch::InSongSelect()) {
+        s_highlightWatch = false;
+        watch::Stop(); // the list object is gone: its address now belongs to something else
+    }
     // Threads created after Install have no breakpoint: on song select without a highlight seen yet,
     // arm again every 2 s.
     static DWORD lastArm = 0;

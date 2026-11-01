@@ -35,6 +35,10 @@ int32_t Bpm(int32_t pv);
 // The song list object seen by the highlight hook (0 before the first highlight). Research.
 uintptr_t ListObject();
 
+// Research: write watch on the song list's highlighted song (list +0xA88). Stops itself when song select closes,
+// because the list object's memory is reused afterwards.
+bool StartHighlightWatch();
+
 // Research: calls the game's "set the highlighted song" function (list +0xA88, 0x1406DE9F0) with this song, from song
 // select. Logs what it did. The function guards itself (it does nothing while the list is busy). Game thread.
 bool SetHighlightTest(int32_t pv);

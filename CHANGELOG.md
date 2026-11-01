@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.7 (02.11.2026)
+- Research: the write watch walks the stack with Windows' unwind tables, so it logs the exact call chain with each
+  function's start address, and dumps the first 128 bytes of every function it meets. The highlight watch stops by itself
+  when song select closes.
+
 ## 2.4.6 (02.11.2026)
 - Research: the write watch dumps the code around every caller on the stack (once each), and a new "Call set-highlight"
   button calls the game's function that sets song select's highlighted song, to see whether it scrolls the list.

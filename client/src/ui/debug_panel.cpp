@@ -237,14 +237,8 @@ static void DrawLaunchOverride()
         // Which game code sets the highlighted song (song list object +0xA88, a 4-byte write): start it in song select,
         // press down a few times, use Random once, send the log. The stack and code around each write show the function
         // that moves the cursor and who calls it.
-        if (ImGui::Button("Watch highlight write (research)")) {
-            if (uintptr_t list = songs::ListObject()) {
-                watch::SetHitCallback(nullptr);
-                watch::Start(list + 0xA88, 60);
-            } else {
-                Log("watch: no song list object yet, open song select first");
-            }
-        }
+        if (ImGui::Button("Watch highlight write (research)"))
+            songs::StartHighlightWatch();
         // Does calling the game's set-highlight function move the list? Open song select, type another song's id (the
         // F8 window / log show ids) and press the button: say whether the cursor scrolled to it, only the jacket/title
         // changed, or nothing; the log has the value before and after.

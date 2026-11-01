@@ -330,5 +330,11 @@ cursor step: `1401EAE3E` (called from `1406F4370` <- `1406EFE48` <- `1406F79D0` 
 `14032F500` <- `1409777EF` <- `140165A2D` <- `1406E2F41` <- `1406E1ADD`); Random landings come only through `1406E1157`
 (from `1401DA834` <- `1406F0262` <- `1401DEFF9`), one write per second while it spins.
 
+Setting the highlight directly does not work (2.4.6 log): calling `0x1406DE9F0(list, pv)` from the overlay changed
+`+0xA88` but the game wrote the cursor's song back within a second, and confirming still started the cursor's song. The
+list is driven by a pointer to the current item (`mov rdx,[[rsi]]; mov edx,[rdx]` = the item's first int is the song id,
+read just before the setter call at `1406E1152`), not by `+0xA88`. The later return addresses in the stack-scan logs were
+leftovers: use the unwound frames of 2.4.7.
+
 Confirmed in game (2.3.1 log): pv_db chart level at chart `+0x40` in half stars (pv 96: raw 6/8/10/14 = 3.0/4.0/5.0/7.0,
 EX chart raw 16 = 8.0) and song entry BPM at entry `+0x4C` (pv 96 = 183).
