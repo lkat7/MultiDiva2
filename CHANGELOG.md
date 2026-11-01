@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.5 (02.11.2026)
+- Research: "Watch highlight write" (Ctrl+F8, `research=1`) logs every write to the song list's highlighted song, with
+  the code around it and the call chain, to find the function that moves song select's cursor. The write watch also
+  logs the 64 bytes after each write now.
+
 ## 2.4.4 (02.11.2026)
 - Add/Remove Miku Bot moved into the options section of the F8 window; the cover there is half the size.
 - Covers of mod songs: a song whose jacket sprite isn't named like the game's own now falls back to any `SONG_JK...`

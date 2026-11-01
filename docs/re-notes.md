@@ -316,5 +316,11 @@ left/right live: `+0x0` = difficulty 0..3 (Easy, Normal, Hard, Extreme), `+0x4` 
 3). Right on the last chart wraps to Easy and left on Easy wraps to Extra. `songs::SelectedChart` reads them and the host
 sends them with `hover` (2.4.0).
 
+Song select objects (Cheat Engine session, confirmed): the highlighted pv is written by `1406DEA22: mov [rcx+0xA88], edx`
+with `rcx` = the song list object and `rdi` = the song select object (`pvsel`); the list sits at `pvsel+0x3380`. The 4 byte
+field at `pvsel+0x262A4` (the song to start) follows the highlight live and holds `-2` (0xFFFFFFFE) while Random is chosen;
+`pvsel+0x262C8/0x262CC` do NOT follow left/right while browsing (the live difficulty is in the stage data). The list's
+`+0xA88` shows the real song id in random mode too.
+
 Confirmed in game (2.3.1 log): pv_db chart level at chart `+0x40` in half stars (pv 96: raw 6/8/10/14 = 3.0/4.0/5.0/7.0,
 EX chart raw 16 = 8.0) and song entry BPM at entry `+0x4C` (pv 96 = 183).

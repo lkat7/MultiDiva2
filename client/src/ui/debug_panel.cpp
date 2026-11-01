@@ -234,6 +234,17 @@ static void DrawLaunchOverride()
             diffhunt::Arm();
             watch::Start(StageEntryAddress(index) + stage::Difficulty, 60);
         }
+        // Which game code sets the highlighted song (song list object +0xA88, a 4-byte write): start it in song select,
+        // press down a few times, use Random once, send the log. The stack and code around each write show the function
+        // that moves the cursor and who calls it.
+        if (ImGui::Button("Watch highlight write (research)")) {
+            if (uintptr_t list = songs::ListObject()) {
+                watch::SetHitCallback(nullptr);
+                watch::Start(list + 0xA88, 60);
+            } else {
+                Log("watch: no song list object yet, open song select first");
+            }
+        }
         // Song select's per-performer outfit selection for the highlighted song (0x141750890 + 0x1C0).
         if (ImGui::Button("Watch outfit selection (research)"))
             watch::Start(0x141750A50, 40);

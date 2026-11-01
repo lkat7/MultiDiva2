@@ -77,6 +77,19 @@ static LONG CALLBACK OnException(EXCEPTION_POINTERS* info)
                 wsprintfA(hex + i * 2, "%02X", code[i]);
             Log("watch #%d: code before %llX: %s", hit + 1, q(ctx->Rip), hex);
         }
+        uint8_t after[64] = {};
+        bool okAfter = true;
+        __try {
+            memcpy(after, (const void*)ctx->Rip, sizeof(after));
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            okAfter = false;
+        }
+        if (okAfter) {
+            char hex[sizeof(after) * 2 + 1];
+            for (size_t i = 0; i < sizeof(after); i++)
+                wsprintfA(hex + i * 2, "%02X", after[i]);
+            Log("watch #%d: code after %llX: %s", hit + 1, q(ctx->Rip), hex);
+        }
     }
     if (hit + 1 >= s_maxHits)
         ctx->Dr7 &= ~1ull; // enough: disarm on this thread (Stop clears the others)
