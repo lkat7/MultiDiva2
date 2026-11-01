@@ -73,6 +73,8 @@ struct State {
     std::optional<Pick> pick;
     int hover = -1; // pv the host has highlighted in song select, -1 = none
     std::string hoverTitle; // its title from the host's game (for songs this player doesn't have)
+    int hoverDifficulty = -1; // the chart the host selected for it: 0..3, -1 = unknown
+    int hoverEdition = -1;     // 1 = the Extra chart
     int focus = -1; // pv everyone reports on: the hovered one, else the pick
     std::vector<Player> players;
 

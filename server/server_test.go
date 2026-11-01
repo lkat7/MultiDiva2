@@ -907,3 +907,39 @@ func TestPlayLogWritten(t *testing.T) {
 		}
 	}
 }
+
+// The host's selected chart (left/right in song select) rides along with the highlighted song.
+func TestHoverCarriesSelectedChart(t *testing.T) {
+	url := startServer(t)
+	host := connect(t, url, "Host")
+	guest := connect(t, url, "Guest")
+	joinInOrder(host, guest, "r")
+
+	three, one := 3, 1
+	host.send("hover", HoverMsg{PV: 50, Title: "Song", Difficulty: &three, Edition: &one})
+	r := guest.expectRoom(func(r RoomMsg) bool { return r.Hover == 50 })
+	if r.HoverDiff != 3 || r.HoverEd != 1 {
+		t.Fatalf("selected chart = %d/%d, want 3/1", r.HoverDiff, r.HoverEd)
+	}
+
+	// Only the chart changed: still broadcast.
+	zero := 0
+	host.send("hover", HoverMsg{PV: 50, Title: "Song", Difficulty: &zero, Edition: &zero})
+	r = guest.expectRoom(func(r RoomMsg) bool { return r.HoverDiff == 0 })
+	if r.HoverEd != 0 {
+		t.Fatalf("selected chart = %d/%d, want 0/0", r.HoverDiff, r.HoverEd)
+	}
+
+	// An older client sends none: unknown.
+	host.send("hover", HoverMsg{PV: 96, Title: "Other"})
+	r = guest.expectRoom(func(r RoomMsg) bool { return r.Hover == 96 })
+	if r.HoverDiff != -1 || r.HoverEd != -1 {
+		t.Fatalf("selected chart = %d/%d, want unknown", r.HoverDiff, r.HoverEd)
+	}
+
+	// Nonsense is ignored as unknown.
+	bad := 9
+	host.send("hover", HoverMsg{PV: 96, Title: "Other", Difficulty: &bad})
+	host.send("chat", ChatMsg{Text: "marker"})
+	guest.expect("chat", nil)
+}

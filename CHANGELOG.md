@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.0 (02.11.2026)
+- While the host browses song select, everyone now sees which chart the host has selected with left/right: the chart row
+  marks it with a tinted tab (brackets in the F8 window) and the plate's difficulty chip follows it. The host's client
+  reads it from the game's stage data and sends it with the highlighted song (`hover` gains optional `difficulty` and
+  `edition`; older clients and servers keep working and simply don't show it).
+
 ## 2.3.11 (02.11.2026)
 - Fixes the crash of the song select watch in 2.3.9 and 2.3.10: the new 0x40 byte stage data scan copied 0x100 bytes
   into its 0x40 byte buffer (a buffer overrun in my code). The earlier guess about the selection record in 2.3.10 was

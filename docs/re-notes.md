@@ -311,5 +311,10 @@ Result (2.3.8 log, 10 rounds on pv 50 and 402, Easy..Extra each): the only non-t
 not a round counter. Whether it follows left/right live in song select (so it can be read while browsing) is what the
 2.3.9 song select watch checks ("stage +0x..." lines). Edition (Extra chart) is a separate field, not found yet.
 
+Selected chart in song select (2.3.11 log, confirmed): the first two ints of the stage data (`0x1416E2B90`) follow
+left/right live: `+0x0` = difficulty 0..3 (Easy, Normal, Hard, Extreme), `+0x4` = 1 for the Extra chart (then `+0x0` stays
+3). Right on the last chart wraps to Easy and left on Easy wraps to Extra. `songs::SelectedChart` reads them and the host
+sends them with `hover` (2.4.0).
+
 Confirmed in game (2.3.1 log): pv_db chart level at chart `+0x40` in half stars (pv 96: raw 6/8/10/14 = 3.0/4.0/5.0/7.0,
 EX chart raw 16 = 8.0) and song entry BPM at entry `+0x4C` (pv 96 = 183).

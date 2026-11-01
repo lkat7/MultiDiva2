@@ -367,13 +367,16 @@ static void DrawRoundStatus(const mp::State& s)
         // Its charts, each in its difficulty's colour (with the level when the game's database gives it).
         static const char* names[] = { "Easy", "Normal", "Hard", "Extreme", "Extra" };
         std::array<float, 5> charts = SongCharts(s.hover);
+        int selected = s.hoverDifficulty < 0 ? -1 : s.hoverEdition == 1 ? 4 : s.hoverDifficulty;
         for (int i = 0; i < 5; i++) {
             if (charts[i] < 0)
                 continue;
+            ImVec4 color = ImGui::ColorConvertU32ToFloat4(DifficultyColor(i));
+            const char* open = i == selected ? "[" : "", *close = i == selected ? "]" : ""; // the host's selected chart
             if (charts[i] > 0)
-                ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(DifficultyColor(i)), "%s %.1f", names[i], charts[i]);
+                ImGui::TextColored(color, "%s%s %.1f%s", open, names[i], charts[i], close);
             else
-                ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(DifficultyColor(i)), "%s", names[i]);
+                ImGui::TextColored(color, "%s%s%s", open, names[i], close);
             ImGui::SameLine();
         }
         int bpm = songs::Bpm(s.hover);
@@ -598,6 +601,11 @@ static void DrawScreens(bool* open)
                 view.songTitle = !s.hoverTitle.empty() ? s.hoverTitle : titles::Describe(s.hover);
             view.songBpm = songs::Bpm(s.hover);
             view.charts = SongCharts(s.hover);
+            if (s.hoverDifficulty >= 0) { // the chart the host has selected with left/right
+                view.selectedChart = s.hoverEdition == 1 ? 4 : s.hoverDifficulty;
+                view.songDifficulty = view.selectedChart; // the plate's difficulty chip follows it
+                view.songLevel = std::max(view.charts[view.selectedChart], -1.0f);
+            }
         } else if (s.pick) {
             view.songTitle = !s.pick->title.empty() ? s.pick->title : titles::Describe(s.pick->pv);
             view.songDifficulty = s.pick->edition ? 4 : s.pick->difficulty;

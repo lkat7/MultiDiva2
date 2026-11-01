@@ -306,9 +306,9 @@ void SongCard(const Ctx& c, const mp::State& s, const RoomView& view, float x, f
     bool hasCharts = false;
     for (float lv : view.charts)
         hasCharts |= lv >= 0;
-    if (view.songDifficulty < 0 && (hasCharts || view.songBpm > 0)) {
+    if (hasCharts || (view.songDifficulty < 0 && view.songBpm > 0)) {
         static const char* short_[] = { "Easy", "Normal", "Hard", "Extreme", "Extra" };
-        struct Piece { std::string text; ImU32 color; };
+        struct Piece { std::string text; ImU32 color; bool selected; };
         std::vector<Piece> pieces;
         for (int i = 0; i < 5; i++) {
             if (view.charts[i] < 0)
@@ -319,10 +319,10 @@ void SongCard(const Ctx& c, const mp::State& s, const RoomView& view, float x, f
                 snprintf(lv, sizeof(lv), " %.1f", view.charts[i]);
                 t += lv;
             }
-            pieces.push_back({ t, DifficultyColor(i) });
+            pieces.push_back({ t, DifficultyColor(i), i == view.selectedChart });
         }
         if (view.songBpm > 0)
-            pieces.push_back({ "BPM " + std::to_string(view.songBpm), White });
+            pieces.push_back({ "BPM " + std::to_string(view.songBpm), White, false });
         Style d;
         d.font = Font::Bold;
         d.px = 32;
@@ -339,14 +339,20 @@ void SongCard(const Ctx& c, const mp::State& s, const RoomView& view, float x, f
             d.px -= 1;
         float cx = x - 90;
         for (const Piece& p : pieces) {
+            float w = TextW(d, p.text.c_str());
+            if (p.selected) { // the chart the host has selected: a tinted tab behind it
+                c.dl->AddRectFilled(c.P(cx - 10, py + 98 - 4), c.P(cx + w + 10, py + 98 + d.px + 8),
+                    (p.color & 0x00FFFFFF) | 0x66000000, 8 * c.s);
+                c.dl->AddRect(c.P(cx - 10, py + 98 - 4), c.P(cx + w + 10, py + 98 + d.px + 8), p.color, 8 * c.s, 0, 2);
+            }
             d.color = p.color;
             Text(c, cx, py + 98, p.text.c_str(), d);
-            cx += TextW(d, p.text.c_str()) + gapW;
+            cx += w + gapW;
         }
         py += 44;
     }
-    // Difficulty (in its colour), level and tempo under the plate.
-    if (view.songDifficulty >= 0) {
+    // Difficulty (in its colour), level and tempo under the plate (a picked song; a highlight has the chart row above).
+    if (view.songDifficulty >= 0 && !hasCharts) {
         static const char* names[] = { "Easy", "Normal", "Hard", "Extreme", "Extra Extreme" };
         std::string info;
         if (view.songDifficulty >= 0 && view.songDifficulty < 5) {

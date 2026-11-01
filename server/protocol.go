@@ -6,8 +6,8 @@ import "encoding/json"
 
 const (
 	ProtocolVersion = 1
-	ServerVersion   = "2.3.11" // release the server belongs to, shown in the client
-	LaunchBlockSize = 276      // stage entry [0x2C, 0x140), see docs/re-notes.md
+	ServerVersion   = "2.4.0" // release the server belongs to, shown in the client
+	LaunchBlockSize = 276     // stage entry [0x2C, 0x140), see docs/re-notes.md
 	MaxNameLen      = 24
 	MaxRoomLen      = 32
 	MaxPlayers      = 8 // per room
@@ -133,6 +133,8 @@ type RoomMsg struct {
 	Pick       *PickInfo    `json:"pick"`
 	Hover      int          `json:"hover"`                // pv the host has highlighted in song select, -1 = none
 	HoverTitle string       `json:"hoverTitle,omitempty"` // its title, as the host's game names it
+	HoverDiff  int          `json:"hoverDifficulty"`      // the chart selected for it, 0..3, -1 = unknown
+	HoverEd    int          `json:"hoverEdition"`         // 1 = the Extra chart, 0 = not, -1 = unknown
 	Focus      int          `json:"focus"`                // pv players report on with `have`: the hovered one, else the pick, -1 = none
 	Players    []PlayerInfo `json:"players"`
 }
@@ -141,6 +143,10 @@ type RoomMsg struct {
 type HoverMsg struct {
 	PV    int    `json:"pv"`
 	Title string `json:"title,omitempty"` // the host's name for it, for players who don't have the song
+	// The chart the host's song select has selected (left/right): Difficulty 0..3, Edition 1 for the Extra chart.
+	// Absent from older clients.
+	Difficulty *int `json:"difficulty,omitempty"`
+	Edition    *int `json:"edition,omitempty"`
 }
 
 // HaveMsg: whether this player has song `pv` (installed, so it can be played).

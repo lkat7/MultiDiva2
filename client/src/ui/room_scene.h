@@ -25,6 +25,7 @@ struct RoomView {
     // For a highlight: the charts the song has, by difficulty 0..3 and the extra chart (4). -1 = no such chart,
     // 0 = it exists (level unknown), else its stars.
     std::array<float, 5> charts = { -1, -1, -1, -1, -1 };
+    int selectedChart = -1; // which of `charts` the host has selected (0..3, 4 = the Extra chart), -1 = unknown
     int songBpm = -1;        // tempo, -1 = unknown
     std::string songHint;
     int songPv = -1; // its jacket, -1 = none

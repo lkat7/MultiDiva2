@@ -11,6 +11,11 @@ void Tick();    // once per frame
 // True if the song is installed (base game, DLC or mod song). difficulty < 0: any chart; edition 2: any.
 bool Has(int32_t pv, int32_t difficulty = -1, int32_t edition = 2);
 
+// The chart song select has selected (left/right): difficulty 0..3, edition 1 for the Extra chart. Read from the first
+// two ints of the stage data, which follow the selection live (2.3.11 log). False outside song select or when the values
+// aren't sane. Game thread.
+bool SelectedChart(int32_t& difficulty, int32_t& edition);
+
 // The song highlighted in song select, -1 when not on song select (or not known yet).
 int32_t Hovered();
 

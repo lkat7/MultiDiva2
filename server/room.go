@@ -48,10 +48,12 @@ type Room struct {
 	goSent     bool // the loading barrier was released this round
 	hover      int  // pv the host has highlighted, -1 = none (lobby only)
 	hoverTitle string
+	hoverDiff  int // the chart the host has selected for it, -1 = unknown
+	hoverEd    int
 }
 
 func newRoom(h *Hub, key, name string) *Room {
-	return &Room{hub: h, key: key, name: name, state: StateLobby, hover: -1}
+	return &Room{hub: h, key: key, name: name, state: StateLobby, hover: -1, hoverDiff: -1, hoverEd: -1}
 }
 
 func (r *Room) Empty() bool {
@@ -111,9 +113,11 @@ func (m *member) lacks(pv int) bool { return pv >= 0 && m.havePV == pv && !m.hav
 
 func (r *Room) snapshot() RoomMsg {
 	focus := r.focus()
-	msg := RoomMsg{Name: r.name, State: r.state, Host: r.host, Hover: r.hover, Focus: focus, Players: []PlayerInfo{}}
+	msg := RoomMsg{Name: r.name, State: r.state, Host: r.host, Hover: r.hover, Focus: focus, Players: []PlayerInfo{},
+		HoverDiff: -1, HoverEd: -1}
 	if r.hover >= 0 {
 		msg.HoverTitle = r.hoverTitle
+		msg.HoverDiff, msg.HoverEd = r.hoverDiff, r.hoverEd
 	}
 	if r.pick != nil {
 		msg.Pick = &PickInfo{PV: r.pick.PV, Difficulty: r.pick.Difficulty, Edition: r.pick.Edition, Title: r.pick.Title}
@@ -371,8 +375,15 @@ func (r *Room) Handle(c *Client, env Envelope) {
 			m.PV = -1
 		}
 		title := cleanText(m.Title, MaxTitleLen)
-		if m.PV != r.hover || title != r.hoverTitle {
-			r.hover, r.hoverTitle = m.PV, title
+		diff, ed := -1, -1
+		if m.Difficulty != nil && *m.Difficulty >= 0 && *m.Difficulty <= 4 {
+			diff, ed = *m.Difficulty, 0
+			if m.Edition != nil && (*m.Edition == 0 || *m.Edition == 1) {
+				ed = *m.Edition
+			}
+		}
+		if m.PV != r.hover || title != r.hoverTitle || diff != r.hoverDiff || ed != r.hoverEd {
+			r.hover, r.hoverTitle, r.hoverDiff, r.hoverEd = m.PV, title, diff, ed
 			r.broadcastState()
 		}
 

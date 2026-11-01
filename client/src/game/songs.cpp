@@ -113,6 +113,17 @@ static DWORD WINAPI ArmThreads(LPVOID)
     return set;
 }
 
+bool SelectedChart(int32_t& difficulty, int32_t& edition)
+{
+    int32_t v[2] = {};
+    if (!launch::InSongSelect() || !SafeCopy(v, (const void*)md::addr::StageData, sizeof(v)) || v[0] < 0 || v[0] > 3
+        || v[1] < 0 || v[1] > 1)
+        return false;
+    difficulty = v[0];
+    edition = v[1];
+    return true;
+}
+
 int32_t Hovered() { return launch::InSongSelect() ? s_highlighted.load() : -1; }
 
 static void* Entry(int32_t pv)

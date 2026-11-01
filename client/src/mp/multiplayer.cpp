@@ -268,6 +268,7 @@ static void ClearRoom()
     s.inRound = s.startPending = false;
     s.hover = s.focus = -1;
     s.hoverTitle.clear();
+    s.hoverDifficulty = s.hoverEdition = -1;
     s_hostStartSent = false;
     s_haveReported.clear();
     s_hoverSent = -2;
@@ -300,6 +301,8 @@ static void OnRoom(const json& d)
     }
     s.hover = d.value("hover", -1);
     s.hoverTitle = d.value("hoverTitle", "");
+    s.hoverDifficulty = d.value("hoverDifficulty", -1);
+    s.hoverEdition = d.value("hoverEdition", -1);
     s.focus = d.value("focus", -1);
     ReportHave();
 }
@@ -562,9 +565,19 @@ void Tick()
     // while scrolling; the last highlight always goes out).
     if (s.conn == Conn::Online && s.inRoom && IsHost() && s.roomState == "lobby") {
         int hovered = songs::Hovered();
-        if (hovered != s_hoverSent && GetTickCount() - s_hoverSentAt >= HoverIntervalMs) {
-            Send("hover", { { "pv", hovered }, { "title", hovered >= 0 ? titles::Find(hovered) : "" } });
-            s_hoverSent = hovered;
+        // The chart selected with left/right counts as part of the highlight: a change of difficulty alone is sent.
+        int32_t diff = -1, edition = -1;
+        if (hovered >= 0 && !songs::SelectedChart(diff, edition))
+            diff = edition = -1;
+        int hoverKey = hovered < 0 ? -1 : hovered * 16 + (diff + 1) * 2 + (edition > 0 ? 1 : 0);
+        if (hoverKey != s_hoverSent && GetTickCount() - s_hoverSentAt >= HoverIntervalMs) {
+            json msg = { { "pv", hovered }, { "title", hovered >= 0 ? titles::Find(hovered) : "" } };
+            if (diff >= 0) {
+                msg["difficulty"] = diff;
+                msg["edition"] = edition;
+            }
+            Send("hover", std::move(msg));
+            s_hoverSent = hoverKey;
             s_hoverSentAt = GetTickCount();
         }
     } else {
