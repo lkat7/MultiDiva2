@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.3.4 (02.11.2026)
+- Fixes a build error in 2.3.3 on MSVC (`near` is a macro in `windows.h`).
+
 ## 2.3.3 (02.11.2026)
 - Research: the song select watch (Ctrl+F8, `research=1`) now also logs every change next to the highlighted song's
   field and in the selection record, and turns the button log on with it, so one run (press left/right/up/down a few

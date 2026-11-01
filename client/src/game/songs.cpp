@@ -321,8 +321,8 @@ static void WatchRegion(const char* name, uintptr_t base, size_t size, size_t al
         if (cur[i] == prev[i] || cur[i] == 0x7FFFFFFF || prev[i] == 0x7FFFFFFF)
             continue;
         bool small = cur[i] >= 0 && cur[i] <= 4 && prev[i] >= 0 && prev[i] <= 4;
-        bool near = i * 4 >= allFrom && i * 4 < allTo;
-        if ((small || near) && lines++ < 200) // at most 200 lines a second: animation counters can be noisy
+        bool inSpan = i * 4 >= allFrom && i * 4 < allTo;
+        if ((small || inSpan) && lines++ < 200) // at most 200 lines a second: animation counters can be noisy
             Log("songs: %s +0x%03zX: %d -> %d (0x%X -> 0x%X)%s", name, i * 4, prev[i], cur[i], (unsigned)prev[i],
                 (unsigned)cur[i], small ? " *" : "");
     }
