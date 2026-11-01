@@ -241,15 +241,6 @@ static void DrawLaunchOverride()
         // that moves the cursor and who calls it.
         if (ImGui::Button("Watch highlight write (research)"))
             songs::StartHighlightWatch();
-        // Does calling the game's set-highlight function move the list? Open song select, type another song's id (the
-        // F8 window / log show ids) and press the button: say whether the cursor scrolled to it, only the jacket/title
-        // changed, or nothing; the log has the value before and after.
-        static int testPv = 50;
-        ImGui::SetNextItemWidth(100);
-        ImGui::InputInt("Test pv", &testPv, 0);
-        ImGui::SameLine();
-        if (ImGui::Button("Call set-highlight (research)"))
-            songs::SetHighlightTest(testPv);
         // Song select's per-performer outfit selection for the highlighted song (0x141750890 + 0x1C0).
         if (ImGui::Button("Watch outfit selection (research)"))
             watch::Start(0x141750A50, 40);
@@ -333,17 +324,6 @@ static void DrawLaunchOverride()
         static bool watchObject = false;
         if (ImGui::Checkbox("Watch the song select object: tab and sort (research)", &watchObject))
             songs::SetSelectObjectWatch(watchObject);
-        // Where is the highlighted song's audio started? Highlight a song (its preview is playing), press the first
-        // button, then pick a hit and press the second and move the highlight to another song: the log names the code
-        // that writes the new audio name (the preview player). Try hit 1, then 2 ... if nothing is written.
-        if (ImGui::Button("Find preview player (research)"))
-            songs::FindPreviewPlayer();
-        static int previewHit = 1;
-        ImGui::SetNextItemWidth(80);
-        ImGui::InputInt("Hit", &previewHit, 0);
-        ImGui::SameLine();
-        if (ImGui::Button("Watch preview hit (research)"))
-            songs::WatchPreviewHit(previewHit);
         // Which game code opens a song's audio file? Start it, then move the highlight over a few songs (the preview
         // starts after the highlight settles), and Stop it: the log lists each open of a "sound/song" or ".ogg" path
         // with the call chain of the game functions behind it.
@@ -354,16 +334,17 @@ static void DrawLaunchOverride()
             filetrace::Stop();
         }
         // The game has three sound stream players (global array). Highlight a song and wait until its preview plays, then
-        // press Dump: the active one (non-zero state, a file name) is the preview. Then watch that player's state while
-        // moving the highlight to another song: the log names the code that starts a stream.
+        // press Dump: the active one (a file name, a playback time that counts up) is the preview (player 0 so far).
+        // Then watch that player's file name while moving the highlight to another song: the log names the code that
+        // starts a stream.
         if (ImGui::Button("Dump sound stream players (research)"))
             streams::Dump();
         static int streamIndex = 0;
         ImGui::SetNextItemWidth(60);
         ImGui::InputInt("Player", &streamIndex, 0);
         ImGui::SameLine();
-        if (ImGui::Button("Watch that player's state (research)"))
-            streams::WatchState(streamIndex);
+        if (ImGui::Button("Watch that player's file name (research)"))
+            streams::WatchName(streamIndex);
         // The player profile: type the in-game profile name, then find it in memory (UTF-8 and UTF-16 hits are logged).
         static char profileName[64] = "";
         ImGui::SetNextItemWidth(220);

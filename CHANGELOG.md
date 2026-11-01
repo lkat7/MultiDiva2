@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.14 (02.11.2026)
+- Removed research code that did not work: the "Call set-highlight" test (the game overwrites the highlight from its
+  cursor), the preview player memory search (it only found the file system's mod folder caches) and the stream state
+  watch (the update loop rewrites the state every frame). The stream watch now watches the player's file name instead.
+
 ## 2.4.13 (02.11.2026)
 - Research: the audio file open trace showed the game plays songs through three fixed stream players. "Dump sound
   stream players" logs them and "Watch that player's state" logs what starts a stream, with the exact call chain.

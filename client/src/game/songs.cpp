@@ -1,6 +1,5 @@
 #include "songs.h"
 #include "launch.h"
-#include "memscan.h"
 #include "pause_guard.h"
 #include "watch.h"
 #include "memory.h"
@@ -351,72 +350,6 @@ static void WatchRegion(const char* name, uintptr_t base, size_t size, size_t al
 
 uintptr_t ListObject() { return s_listObject; }
 
-static std::vector<uintptr_t> s_previewHits;
-
-void FindPreviewPlayer()
-{
-    int32_t pv = Hovered();
-    void* entry = pv >= 0 ? Entry(pv) : nullptr;
-    // pv_db entry +0x50: std::string with the audio file name. Its text sits inline (short) or in a heap buffer.
-    uintptr_t at = entry ? (uintptr_t)entry + 0x50 : 0;
-    std::string file;
-    if (!at || !ReadStdString(at, file)) {
-        Log("songs: preview player search needs a highlighted song in song select");
-        return;
-    }
-    uint64_t first = 0, size = 0, cap = 0;
-    SafeRead(at, first);
-    SafeRead(at + 8, size);
-    SafeRead(at + 16, cap);
-    const uintptr_t ownText = cap >= 16 ? (uintptr_t)first : at;
-    Log("songs: looking for the audio file name of pv %d: \"%s\" (the song database keeps it at %llX)", pv, file.c_str(),
-        (unsigned long long)ownText);
-
-    std::vector<uintptr_t> hits = memscan::Find(file.data(), file.size(), 64);
-    std::wstring wide(file.begin(), file.end());
-    std::vector<uintptr_t> wideHits = memscan::Find(wide.data(), wide.size() * sizeof(wchar_t), 64);
-    s_previewHits.clear();
-    int number = 0;
-    auto report = [&](uintptr_t hit, const char* encoding) {
-        if (hit == ownText || (hit >= (uintptr_t)entry && hit < (uintptr_t)entry + 0x3E0))
-            return; // the song database's own copy
-        s_previewHits.push_back(hit);
-        number++;
-        // 0x20 bytes before and 0x60 from the hit: the object this name belongs to, as ints and as text.
-        uint8_t buf[0x80] = {};
-        char text[0x61] = {};
-        if (SafeCopy(buf, (const void*)(hit - 0x20), sizeof(buf))) {
-            for (size_t i = 0; i < 0x60; i++)
-                text[i] = (buf[0x20 + i] >= 0x20 && buf[0x20 + i] < 0x7F) ? (char)buf[0x20 + i] : '.';
-            Log("songs: hit %d at %llX (%s)  text: %s", number, (unsigned long long)hit, encoding, text);
-            for (size_t row = 0; row < 0x80; row += 0x20) {
-                int32_t w[8];
-                memcpy(w, buf + row, sizeof(w));
-                Log("songs:   %+04d: %08X %08X %08X %08X %08X %08X %08X %08X", (int)row - 0x20, w[0], w[1], w[2], w[3], w[4],
-                    w[5], w[6], w[7]);
-            }
-        } else {
-            Log("songs: hit %d at %llX (%s), unreadable around", number, (unsigned long long)hit, encoding);
-        }
-    };
-    for (uintptr_t h : hits)
-        report(h, "UTF-8");
-    for (uintptr_t h : wideHits)
-        report(h, "UTF-16");
-    Log("songs: %d place(s) besides the song database. Now press \"Watch preview hit\" with a hit number, then move the "
-        "highlight to another song.", number);
-}
-
-bool WatchPreviewHit(int index)
-{
-    if (index < 1 || index > (int)s_previewHits.size()) {
-        Log("songs: no preview hit %d (run the search first)", index);
-        return false;
-    }
-    watch::SetHitCallback(nullptr);
-    return watch::Start(s_previewHits[(size_t)index - 1] & ~(uintptr_t)3, 80);
-}
-
 static std::atomic<bool> s_highlightWatch{false};
 
 bool StartHighlightWatch()
@@ -430,26 +363,6 @@ bool StartHighlightWatch()
     bool ok = watch::Start(list + 0xA88, 80);
     s_highlightWatch = ok;
     return ok;
-}
-
-bool SetHighlightTest(int32_t pv)
-{
-    // 0x1406DE9F0(list, pv): push rbx; sub rsp,60h; mov rax,[rip+...] (stack cookie). Its writes to list+0xA88 were
-    // caught with the write watch; it looks the song up and refreshes the list's dependent state.
-    constexpr uintptr_t SetHighlight = 0x1406DE9F0;
-    static const uint8_t bytes[] = { 0x40, 0x53, 0x48, 0x83, 0xEC, 0x60, 0x48, 0x8B, 0x05 };
-    uintptr_t list = s_listObject;
-    if (!launch::InSongSelect() || !list || !CodeIs(SetHighlight, bytes) || pv < 0 || !Has(pv)) {
-        Log("songs: SetHighlight(%d) not called (not in song select, no list yet, code differs, or song not installed)", pv);
-        return false;
-    }
-    int32_t before = -1;
-    SafeRead(list + 0xA88, before);
-    ((void(__fastcall*)(void*, int32_t))SetHighlight)((void*)list, pv);
-    int32_t after = -1;
-    SafeRead(list + 0xA88, after);
-    Log("songs: SetHighlight(list %llX, pv %d): +0xA88 was %d, now %d", (unsigned long long)list, pv, before, after);
-    return true;
 }
 
 void SetListWatch(bool on)

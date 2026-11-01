@@ -8,7 +8,8 @@ namespace md::streams {
 // Logs the three players: their ints and every std::string inside (a stream's file name). Do it while a preview plays.
 void Dump();
 
-// Write watch (with the exact call chain) on one player's state field: whatever starts or changes that stream is logged.
-bool WatchState(int index);
+// Write watch (with the exact call chain) on one player's file name (the size of its std::string): whatever requests a new
+// stream is logged. (The state field is useless: the update loop rewrites it every frame.)
+bool WatchName(int index);
 
 } // namespace md::streams

@@ -12,6 +12,7 @@ constexpr uintptr_t Players = 0x14CBFF0A0;
 constexpr size_t Stride = 0x58;
 constexpr int Count = 3;
 constexpr size_t StateOffset = 0x50;
+constexpr size_t NameSizeOffset = 0x10;
 
 static bool CodeLooksRight()
 {
@@ -73,14 +74,16 @@ void Dump()
     }
 }
 
-bool WatchState(int index)
+bool WatchName(int index)
 {
     if (index < 0 || index >= Count || !CodeLooksRight()) {
         Log("streams: no player %d (or the game code differs)", index);
         return false;
     }
+    // The file name is a std::string at +0x00 (text or pointer, size at +0x10): assigning a new name writes the size,
+    // even when it is unchanged. The state at +0x50 is rewritten by the update loop every frame, so it is useless.
     watch::SetHitCallback(nullptr);
-    return watch::Start(Players + (uintptr_t)index * Stride + StateOffset, 80);
+    return watch::Start(Players + (uintptr_t)index * Stride + NameSizeOffset, 80);
 }
 
 } // namespace md::streams

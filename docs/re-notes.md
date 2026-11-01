@@ -383,3 +383,9 @@ jump table for states 0..6, state at object `+0x50`) <- `1405AF2A0` (per-object 
 objects, 0x58 bytes each, global array at `0x14CBFF0A0`) <- `1405AA037` <- `1402B68C0` <- the task loop. So the game has
 three stream players updated every frame; the preview/BGM/voice use them. The request that starts a stream is made by
 other code earlier (the open runs from the update loop), so a write watch on a player's state field is the way to find it.
+
+Stream player 0 is the song select preview (2.4.13 dump, pv 1231): `+0x00` std::string with the file name (text or pointer,
+size `+0x10`, capacity `+0x18`), `+0x20` pointer to the stream object, `+0x28` / `+0x48` volume-like floats (0.18),
+`+0x2C` a float 172.7 (length of the track?), `+0x30` a float that counts up in real time (35.8, then 38.1 two seconds
+later: the playback position), `+0x50` the state, which the update loop rewrites every frame (0 then 1), so a write watch
+on it only shows that loop. Players 1 and 2 were idle (state 0, nothing playing).

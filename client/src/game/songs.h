@@ -40,22 +40,9 @@ uintptr_t ListObject();
 // animation counters. Press T, Q and E in song select with it on.
 void SetSelectObjectWatch(bool on);
 
-// Research: finds where the game keeps the highlighted song's audio file name (e.g. "rom/sound/song/pv_050.ogg") besides
-// the song database: the preview player must store or read it. Logs every place with its surroundings and remembers them.
-// Slow (scans the game's memory). Game thread.
-void FindPreviewPlayer();
-
-// Research: write watch (with the exact call chain) on one of those places, by its number in the log (1 = the first):
-// then move the highlight to another song; whatever writes the new name is the code that starts the preview.
-bool WatchPreviewHit(int index);
-
 // Research: write watch on the song list's highlighted song (list +0xA88). Stops itself when song select closes,
 // because the list object's memory is reused afterwards.
 bool StartHighlightWatch();
-
-// Research: calls the game's "set the highlighted song" function (list +0xA88, 0x1406DE9F0) with this song, from song
-// select. Logs what it did. The function guards itself (it does nothing while the list is busy). Game thread.
-bool SetHighlightTest(int32_t pv);
 
 // Research: while on, every frame in song select, logs each int32 in the song list object (the highlight hook's rcx)
 // and in song select's selection record that changes between two values 0..4 (difficulty / edition look like that),
