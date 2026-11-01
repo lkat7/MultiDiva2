@@ -1,0 +1,10 @@
+# One command per line; see ExportDecompiled.java. Addresses come from docs/re-notes.md.
+# The highlight setter, and who calls it (the cursor code):
+decompile 1406DE9F0
+callers 1406DE9F0
+# The caller seen in every highlight write (G, contains the call at 1406E1152): its code
+disasm 1406E1098 60
+# The sound stream player update chain:
+decompile 1405AF2A0
+decompile 1405AF420
+decompile 1405AF560

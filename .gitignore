@@ -51,3 +51,5 @@ skills-lock.json
 CLAUDE.md
 __pycache__/
 multidiva-plays.txt
+# Game code decompiled from a dump: never commit
+tools/re/ghidra/out*.txt

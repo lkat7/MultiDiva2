@@ -7,6 +7,7 @@
 #include "../core/version.h"
 #include "../game/diffhunt.h"
 #include "../game/filetrace.h"
+#include "../game/gamedump.h"
 #include "../game/launch.h"
 #include "../game/memory.h"
 #include "../game/memscan.h"
@@ -333,6 +334,10 @@ static void DrawLaunchOverride()
         } else if (ImGui::Button("Stop tracing audio file opens")) {
             filetrace::Stop();
         }
+        // The game's code for reading in Ghidra (docs/ghidra.md): write it to %LOCALAPPDATA%\MultiDiva2\dump. Press it on
+        // song select (the protector has decrypted the code by then). Takes a few seconds; the file is for your own use.
+        if (ImGui::Button("Dump game image to file for Ghidra (research)"))
+            gamedump::Write();
         // The game has three sound stream players (global array). Highlight a song and wait until its preview plays, then
         // press Dump: the active one (a file name, a playback time that counts up) is the preview (player 0 so far).
         // Then watch that player's file name while moving the highlight to another song: the log names the code that

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.15 (02.11.2026)
+- Research: "Dump game image to file for Ghidra" writes the game's decrypted code and data to your PC, and
+  `tools/re/ghidra/` turns a list of addresses into decompiled C, caller lists and disassembly (see `docs/ghidra.md`).
+
 ## 2.4.14 (02.11.2026)
 - Removed research code that did not work: the "Call set-highlight" test (the game overwrites the highlight from its
   cursor), the preview player memory search (it only found the file system's mod folder caches) and the stream state

@@ -26,6 +26,7 @@ add_library(MultiDiva SHARED
     client/src/core/mod.cpp
     client/src/game/diffhunt.cpp
     client/src/game/filetrace.cpp
+    client/src/game/gamedump.cpp
     client/src/game/hooks.cpp
     client/src/game/launch.cpp
     client/src/game/memory.cpp
