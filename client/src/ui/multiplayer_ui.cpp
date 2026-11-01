@@ -1,6 +1,7 @@
 #include "multiplayer_ui.h"
 #include "avatars.h"
 #include "bug_report.h"
+#include "game_sprites.h"
 #include "glyphs.h"
 #include "input_block.h"
 #include "leaderboard.h"
@@ -102,6 +103,19 @@ static std::array<float, 5> SongCharts(int32_t pv)
         out[i] = level > 0 ? level : 0;
     }
     return cache[pv] = out;
+}
+
+// The song's cover (the game's own jacket, loaded on demand) as a square of `size` pixels at the cursor, or a plain
+// grey square while it isn't loaded or the song isn't installed. Takes the square's place in the layout.
+static void DrawJacket(int32_t pv, float size)
+{
+    ImVec2 a = ImGui::GetCursorScreenPos(), b(a.x + size, a.y + size);
+    ImGui::Dummy(ImVec2(size, size));
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    if (const sprites::Sprite* jacket = pv >= 0 ? sprites::Jacket(pv) : nullptr)
+        sprites::Draw(dl, *jacket, a, b);
+    else
+        dl->AddRectFilled(a, b, IM_COL32(60, 62, 70, 255), 4);
 }
 
 static void InputString(const char* label, std::string& value, size_t max)
@@ -362,6 +376,10 @@ static void DrawRoundStatus(const mp::State& s)
         std::string title = titles::Find(s.hover);
         if (title.empty())
             title = !s.hoverTitle.empty() ? s.hoverTitle : titles::Describe(s.hover);
+        // The cover on the left, the song's lines to its right.
+        DrawJacket(s.hover, ImGui::GetFrameHeightWithSpacing() * 3);
+        ImGui::SameLine();
+        ImGui::BeginGroup();
         if (mp::IsHost())
             ImGui::TextColored(Dim, "Highlighted: %s", title.c_str());
         else
@@ -387,6 +405,7 @@ static void DrawRoundStatus(const mp::State& s)
             ImGui::TextColored(Dim, "BPM %d", bpm);
         else
             ImGui::NewLine();
+        ImGui::EndGroup();
     }
     std::string missing;
     int missingCount = 0;
@@ -428,10 +447,14 @@ static void DrawRoundStatus(const mp::State& s)
     }
 
     if (s.pick) {
+        DrawJacket(s.pick->pv, ImGui::GetFrameHeightWithSpacing() * 2);
+        ImGui::SameLine();
+        ImGui::BeginGroup();
         ImGui::TextColored(Dim, "Last song: %s", PickName(*s.pick).c_str());
         ImVec4 detailColor;
         std::string detail = PickDetail(*s.pick, detailColor);
         ImGui::TextColored(detailColor, "%s", detail.c_str());
+        ImGui::EndGroup();
     }
 }
 

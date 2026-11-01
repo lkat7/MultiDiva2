@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.3 (02.11.2026)
+- The F8 window shows the cover (the game's own jacket) of the host's highlighted song, and of the last song played,
+  next to its lines. The full-screen room already did.
+
 ## 2.4.2 (02.11.2026)
 - Charts a song doesn't really have are no longer listed. The game keeps an empty placeholder in those slots (level 0,
   greyed out in song select) and the song check counted it as present, so Easy showed up for songs without one.
