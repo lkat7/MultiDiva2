@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.1 (02.11.2026)
+- In the chart row only the host's selected chart keeps its colour, the others are grey (all stay coloured while the
+  selection is unknown, e.g. with an older host). The F8 window has a divider between the room status and the options.
+
 ## 2.4.0 (02.11.2026)
 - While the host browses song select, everyone now sees which chart the host has selected with left/right: the chart row
   marks it with a tinted tab (brackets in the F8 window) and the plate's difficulty chip follows it. The host's client

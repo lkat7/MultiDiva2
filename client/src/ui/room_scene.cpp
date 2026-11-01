@@ -319,7 +319,9 @@ void SongCard(const Ctx& c, const mp::State& s, const RoomView& view, float x, f
                 snprintf(lv, sizeof(lv), " %.1f", view.charts[i]);
                 t += lv;
             }
-            pieces.push_back({ t, DifficultyColor(i), i == view.selectedChart });
+            // Only the selected chart keeps its colour; the others are grey (all coloured while the selection is unknown).
+            bool grey = view.selectedChart >= 0 && i != view.selectedChart;
+            pieces.push_back({ t, grey ? IM_COL32(150, 152, 160, 255) : DifficultyColor(i), i == view.selectedChart });
         }
         if (view.songBpm > 0)
             pieces.push_back({ "BPM " + std::to_string(view.songBpm), White, false });

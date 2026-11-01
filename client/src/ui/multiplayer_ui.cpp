@@ -371,7 +371,8 @@ static void DrawRoundStatus(const mp::State& s)
         for (int i = 0; i < 5; i++) {
             if (charts[i] < 0)
                 continue;
-            ImVec4 color = ImGui::ColorConvertU32ToFloat4(DifficultyColor(i));
+            // Only the selected chart keeps its colour; the others are grey (all coloured while the selection is unknown).
+            ImVec4 color = selected < 0 || i == selected ? ImGui::ColorConvertU32ToFloat4(DifficultyColor(i)) : Dim;
             const char* open = i == selected ? "[" : "", *close = i == selected ? "]" : ""; // the host's selected chart
             if (charts[i] > 0)
                 ImGui::TextColored(color, "%s%s %.1f%s", open, names[i], charts[i], close);
@@ -830,6 +831,7 @@ void DrawLobby(bool* open)
         DrawPlayers(s);
         ImGui::Separator();
         DrawRoundStatus(s);
+        ImGui::Separator(); // status above, options below
         Config& cfg = GetConfig();
         if (ImGui::Checkbox("Live leaderboard", &cfg.showLeaderboard))
             SaveConfig();
