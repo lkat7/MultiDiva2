@@ -380,10 +380,9 @@ static void DrawRoundStatus(const mp::State& s)
         DrawJacket(s.hover, ImGui::GetFrameHeightWithSpacing() * 1.5f); // half the height of its three lines
         ImGui::SameLine();
         ImGui::BeginGroup();
-        if (mp::IsHost())
-            ImGui::TextColored(Dim, "Highlighted: %s", title.c_str());
-        else
-            ImGui::TextColored(Dim, "The host is looking at: %s", title.c_str());
+        ImGui::TextColored(Dim, "%s", mp::IsHost() ? "Highlighted:" : "The host is looking at:");
+        ImGui::SameLine();
+        ImGui::TextUnformatted(title.c_str()); // the song's title in white
         // Its charts, each in its difficulty's colour (with the level when the game's database gives it).
         static const char* names[] = { "Easy", "Normal", "Hard", "Extreme", "Extra" };
         std::array<float, 5> charts = SongCharts(s.hover);
@@ -402,7 +401,7 @@ static void DrawRoundStatus(const mp::State& s)
         }
         int bpm = songs::Bpm(s.hover);
         if (bpm > 0)
-            ImGui::TextColored(Dim, "BPM %d", bpm);
+            ImGui::TextColored(ImVec4(0.45f, 0.45f, 0.49f, 1.0f), "BPM %d", bpm); // greyer than the chart names
         else
             ImGui::NewLine();
         ImGui::EndGroup();
@@ -437,14 +436,9 @@ static void DrawRoundStatus(const mp::State& s)
     }
 
     if (s.pick) {
-        DrawJacket(s.pick->pv, ImGui::GetFrameHeightWithSpacing());
+        DrawJacket(s.pick->pv, ImGui::GetFrameHeight());
         ImGui::SameLine();
-        ImGui::BeginGroup();
         ImGui::TextColored(Dim, "Last song: %s", PickName(*s.pick).c_str());
-        ImVec4 detailColor;
-        std::string detail = PickDetail(*s.pick, detailColor);
-        ImGui::TextColored(detailColor, "%s", detail.c_str());
-        ImGui::EndGroup();
     }
 }
 

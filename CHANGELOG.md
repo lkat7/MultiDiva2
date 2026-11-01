@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.17 (02.11.2026)
+- Room window: the highlighted song's title is white, its BPM is greyer, and "Last song" is one line ("Title (Hard)")
+  without the extra level and BPM line.
+
 ## 2.4.16 (02.11.2026)
 - Removed the unfinished research tools: the Ghidra export (game image dump, `tools/re/ghidra/`), the stream player
   dump and file name watch, the audio file open trace, the difficulty write hunt, the song select/highlight watches
