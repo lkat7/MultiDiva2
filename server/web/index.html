@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MultiDiva2 Live</title>
+<style>
+:root {
+  --bg: #0f1418; --panel: #172027; --line: #25323b; --text: #e8eef2; --dim: #8a99a4; --accent: #39c5bb;
+  --warn: #f2b84b; --bad: #ef6a6a;
+}
+@media (prefers-color-scheme: light) {
+  :root { --bg: #f1f5f7; --panel: #fff; --line: #d9e2e7; --text: #1b252b; --dim: #667781; --accent: #139a90; --warn: #b87a0a; --bad: #c43d3d; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.4 system-ui, "Segoe UI", sans-serif; }
+header { display: flex; align-items: baseline; gap: 12px; padding: 16px; max-width: 960px; margin: 0 auto; }
+h1 { margin: 0; font-size: 1.3rem; color: var(--accent); }
+#status { color: var(--dim); font-size: .85rem; margin-left: auto; }
+main { max-width: 960px; margin: 0 auto; padding: 0 16px 32px; display: grid; gap: 16px; }
+.room { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.head h2 { margin: 0; font-size: 1.1rem; }
+.badge { font-size: .75rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--dim); }
+.badge.playing { color: var(--bg); background: var(--accent); border-color: var(--accent); font-weight: 600; }
+.song { margin: 6px 0 10px; color: var(--dim); }
+.song b { color: var(--text); font-weight: 600; }
+.diff { font-weight: 600; }
+.row { display: grid; grid-template-columns: 2rem 36px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+.row.lobby { grid-template-columns: 36px minmax(0, 1fr) auto; }
+.place { text-align: center; color: var(--dim); font-variant-numeric: tabular-nums; }
+.row:first-of-type .place.live { color: var(--warn); font-weight: 700; }
+.av { width: 36px; height: 36px; border-radius: 8px; background: var(--line); object-fit: cover; display: block; }
+.name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag { color: var(--warn); font-size: .75rem; margin-left: 6px; }
+.tag.dim { color: var(--dim); }
+.bar { height: 5px; background: var(--line); border-radius: 3px; margin-top: 4px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); transition: width .4s linear; }
+.bar i.failed { background: var(--bad); }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.num small { display: block; color: var(--dim); font-size: .75rem; }
+.fail { color: var(--bad); }
+details { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; color: var(--dim); }
+summary { cursor: pointer; }
+.empty { text-align: center; color: var(--dim); padding: 48px 0; }
+</style>
+</head>
+<body>
+<header><h1>MultiDiva2 Live</h1><span id="status">connecting…</span></header>
+<main id="rooms"></main>
+<script>
+"use strict";
+const DIFFS = ["Easy", "Normal", "Hard", "Extreme", "Extra Extreme"];
+const COLORS = ["#4aa8ff", "#4ccf7a", "#f2a23a", "#ef5b5b", "#b673ee"];
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+function songName(p) { return p.title || ("PV " + p.pv); }
+function diffIndex(p) { return p.edition === 1 ? 4 : p.difficulty; }
+function songLine(p, prefix) {
+  const d = el("div", "song");
+  if (prefix) d.append(prefix + " ");
+  d.append(el("b", "", songName(p)), " ");
+  const i = diffIndex(p), s = el("span", "diff", DIFFS[i] || "");
+  s.style.color = COLORS[i] || "inherit";
+  d.append(s);
+  return d;
+}
+function avatar(p) {
+  const img = el("img", "av");
+  img.alt = "";
+  img.loading = "lazy";
+  if (p.avatar) img.src = "/avatar/" + p.id;
+  else img.style.visibility = "hidden";
+  return img;
+}
+const fmt = n => n.toLocaleString("en-US");
+
+function playerRow(p, place) {
+  const live = p.playing;
+  const row = el("div", "row" + (live ? "" : " lobby"));
+  if (live) row.append(el("div", "place live", String(place)));
+  row.append(avatar(p));
+  const mid = el("div");
+  const name = el("div", "name", p.name);
+  if (p.host) name.append(el("span", "tag", "host"));
+  if (p.away) name.append(el("span", "tag dim", "reconnecting"));
+  else if (!live && p.ready) name.append(el("span", "tag dim", "ready"));
+  if (live && p.failed) name.append(el("span", "tag fail", "failed"));
+  else if (live && p.finished) name.append(el("span", "tag dim", "finished"));
+  mid.append(name);
+  if (live) {
+    const bar = el("div", "bar"), fill = el("i", p.failed ? "failed" : "");
+    fill.style.width = Math.max(0, Math.min(100, p.completion)) + "%";
+    bar.append(fill);
+    mid.append(bar);
+  }
+  row.append(mid);
+  if (live) {
+    const n = el("div", "num", fmt(p.score));
+    n.append(el("small", "", p.completion.toFixed(2) + "% · " + p.combo + " combo"));
+    row.append(n);
+  } else row.append(el("div"));
+  return row;
+}
+
+function lastRound(last) {
+  const d = el("details");
+  const s = el("summary", "", "Last round: " + (last.pick ? songName(last.pick) : "") + (last.pick ? " (" + (DIFFS[diffIndex(last.pick)] || "") + ")" : ""));
+  d.append(s);
+  last.results.forEach(r => {
+    const row = el("div", "row");
+    row.append(el("div", "place", String(r.place)), el("div"), el("div", "name" + (r.result.failed ? " fail" : ""), r.name + (r.result.failed ? " (failed)" : "")));
+    const n = el("div", "num", fmt(r.result.score));
+    n.append(el("small", "", r.result.maxCombo + " max combo"));
+    row.append(n);
+    d.append(row);
+  });
+  return d;
+}
+
+function roomCard(r) {
+  const c = el("section", "room");
+  const head = el("div", "head");
+  head.append(el("h2", "", r.name));
+  const playing = r.state === "playing";
+  head.append(el("span", "badge" + (playing ? " playing" : ""), playing ? "playing" : "lobby"));
+  head.append(el("span", "badge", r.players.length + (r.players.length === 1 ? " player" : " players")));
+  c.append(head);
+  if (r.pick && (playing || !r.hover)) c.append(songLine(r.pick, playing ? "" : "Next:"));
+  else if (r.hover) c.append(el("div", "song", "Host is looking at: " + r.hover));
+  else c.append(el("div", "song", "No song picked yet"));
+  let place = 0;
+  r.players.forEach(p => c.append(playerRow(p, p.playing ? ++place : 0)));
+  if (r.last && r.last.results.length) c.append(lastRound(r.last));
+  return c;
+}
+
+const root = document.getElementById("rooms"), status = document.getElementById("status");
+const openDetails = new Set();
+async function refresh() {
+  try {
+    const res = await fetch("/api/rooms", { cache: "no-store" });
+    const data = await res.json();
+    root.querySelectorAll("section").forEach(s => {
+      const d = s.querySelector("details");
+      const n = s.querySelector("h2").textContent;
+      if (d && d.open) openDetails.add(n); else openDetails.delete(n);
+    });
+    root.replaceChildren();
+    if (!data.rooms.length) root.append(el("div", "empty", "No rooms right now."));
+    data.rooms.forEach(r => {
+      const card = roomCard(r);
+      const d = card.querySelector("details");
+      if (d && openDetails.has(r.name)) d.open = true;
+      root.append(card);
+    });
+    status.textContent = "live · server " + data.server;
+    status.style.color = "";
+  } catch (e) {
+    status.textContent = "offline, retrying…";
+    status.style.color = "var(--bad)";
+  }
+}
+refresh();
+setInterval(refresh, 1000);
+</script>
+</body>
+</html>

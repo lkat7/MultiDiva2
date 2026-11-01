@@ -49,6 +49,13 @@ your router to your PC. Friends enter your public IP and port 3939.
 Everyone installs Tailscale and joins your network; friends use your Tailscale IP and port 3939.
 Run the server with `-addr :3939`.
 
+## Spectator page
+
+The server also serves a read-only web page: open the server's address in a browser (`http://localhost:3939/`, or
+the public address you host on) to see every room, its players and the host's song, and a live leaderboard (score,
+combo, completion) while a round plays. It shows the same things the in-game room list and leaderboard show, never
+chat. `GET /api/rooms` returns the same data as JSON. Turn it off with `-spectate=false`.
+
 ## Testing alone
 
 `server/cmd/bot` is a fake player that joins a room, readies up and plays along:

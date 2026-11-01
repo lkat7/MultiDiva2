@@ -50,6 +50,9 @@ type Room struct {
 	hoverTitle string
 	hoverDiff  int // the chart the host has selected for it, -1 = unknown
 	hoverEd    int
+
+	lastResults []FinalResult // the previous round's ranking and what was played, for the spectator page
+	lastPick    *PickInfo
 }
 
 func newRoom(h *Hub, key, name string) *Room {
@@ -607,6 +610,10 @@ func (r *Room) checkRoundOver() {
 
 	r.stopTicker()
 	r.state = StateLobby
+	r.lastResults = append([]FinalResult(nil), results...)
+	if r.pick != nil {
+		r.lastPick = &PickInfo{PV: r.pick.PV, Difficulty: r.pick.Difficulty, Edition: r.pick.Edition, Title: r.pick.Title}
+	}
 	for _, m := range r.members {
 		m.playing, m.finished = false, false
 	}

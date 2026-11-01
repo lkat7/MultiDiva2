@@ -34,7 +34,7 @@ func startServer(t *testing.T) string {
 
 func startServerHub(t *testing.T) (string, *Hub) {
 	hub := NewHub(20*time.Millisecond, 300*time.Millisecond)
-	srv := httptest.NewServer(httpHandler(hub))
+	srv := httptest.NewServer(httpHandler(hub, true))
 	t.Cleanup(srv.Close)
 	return "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws", hub
 }
