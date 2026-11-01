@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.10 (02.11.2026)
+- Research: the song select object watch logs the buttons you tap next to the fields that change, and logs values up to
+  15 (a tab index can reach 10). From the 2.4.9 log: sort mode is `object +0x17DFC` (Star 6, Singer 1, Score 2, Name 0),
+  with a 0..3 step counter at `+0x17E0C` / `+0x262C0`; the selected difficulty is `+0x262C8`.
+
 ## 2.4.9 (02.11.2026)
 - Research: "Watch the song select object" logs small values that settle in the whole song select object, to find the
   character tab and the sort mode (sort cycles Star, Singer, Score, Name).

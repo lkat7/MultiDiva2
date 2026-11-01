@@ -336,5 +336,12 @@ list is driven by a pointer to the current item (`mov rdx,[[rsi]]; mov edx,[rdx]
 read just before the setter call at `1406E1152`), not by `+0xA88`. The later return addresses in the stack-scan logs were
 leftovers: use the unwound frames of 2.4.7.
 
+Song select object fields (2.4.9 object watch, `pvsel` = list - 0x3380, 0x26400 bytes watched): sort mode is
+`+0x17DFC` (T cycles Star 6 > Singer 1 > Score 2 > Name 0 > Star), with a 1,2,3,0 step counter at `+0x17E0C` and `+0x262C0`;
+the selected difficulty is `+0x262C8` (3 -> 2 -> 3 for left, right), so the earlier "does not follow" CE result came from
+the wrong base. The character/star tab strip depends on the sort (Star: 6, 6.5 ... 10, ALL, heart; Singer: Miku, Rin,
+Len, Luka, KAITO, MEIKO, ALL, heart): ALL is always the second to last tab. The tab index itself is not pinned down yet
+(fields near `+0x3978..+0x3990` change with the E/Q presses but not as a plain count).
+
 Confirmed in game (2.3.1 log): pv_db chart level at chart `+0x40` in half stars (pv 96: raw 6/8/10/14 = 3.0/4.0/5.0/7.0,
 EX chart raw 16 = 8.0) and song entry BPM at entry `+0x4C` (pv 96 = 183).

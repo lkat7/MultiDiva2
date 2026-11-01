@@ -1,5 +1,6 @@
 #include "songs.h"
 #include "launch.h"
+#include "pause_guard.h"
 #include "watch.h"
 #include "memory.h"
 #include "../core/log.h"
@@ -428,12 +429,27 @@ static void WatchSelectObject()
     DWORD now = GetTickCount();
     if (now - windowStart > 1000)
         windowStart = now, lines = 0;
+    // The buttons just tapped, by the game's numbers (3 UP, 4 DOWN, 5 LEFT, 6 RIGHT, 8 SQUARE, 11 L = Q, 12 R = E ...),
+    // so each settled change below can be matched to the key that caused it.
+    if (const void* input = pause::InputObject()) {
+        uint8_t tapped[16] = {};
+        static uint8_t lastTapped[16] = {};
+        if (SafeCopy(tapped, input, sizeof(tapped)) && memcmp(tapped, lastTapped, sizeof(tapped)) != 0) {
+            std::string pressed;
+            for (int b = 0; b < 128; b++)
+                if ((tapped[b / 8] & (1 << (b % 8))) && !(lastTapped[b / 8] & (1 << (b % 8))))
+                    pressed += " " + std::to_string(b);
+            if (!pressed.empty())
+                Log("songs: ---- buttons tapped:%s", pressed.c_str());
+            memcpy(lastTapped, tapped, sizeof(tapped));
+        }
+    }
     for (size_t i = 0; i < cur.size(); i++) {
         if (cur[i] != last[i]) {
             last[i] = cur[i];
             stable[i] = 0;
         } else if (stable[i] < 255 && ++stable[i] == 5 && cur[i] != settled[i]) {
-            bool small = cur[i] >= 0 && cur[i] <= 9 && settled[i] >= 0 && settled[i] <= 9;
+            bool small = cur[i] >= 0 && cur[i] <= 15 && settled[i] >= 0 && settled[i] <= 15;
             if (small && lines++ < 100)
                 Log("songs: object +0x%05zX settled: %d -> %d", i * 4, settled[i], cur[i]);
             settled[i] = cur[i];
