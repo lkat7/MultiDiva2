@@ -399,3 +399,14 @@ on it only shows that loop. Players 1 and 2 were idle (state 0, nothing playing)
 - `0x1405AB7A0` is a sound-effect cue map loader, `0x1405AFD30` returns a volume-config struct (not the players). Neither is the play function.
 - Only 9 call sites use `GetStreamPlayer`, none sets the file name. The play function therefore writes the player directly (e.g. via a different accessor/inlined index math), so it cannot be found by xref alone.
 - Next step: run "Watch that player's file name" (F8, 2.4.14) while a preview starts; its call chain names the play function.
+
+## Preview start found (log 3a10b073 + dump, 2.4.15)
+
+The F8 "Watch that player's file name" test caught the writer. Call chain (all game thread, song select frame):
+`1406EDC40` (pvsel update, rcx = pvsel) -> `1406F7870` (preview state machine, rcx = pvsel+0x258D8) -> `1406F7650` (StartPreview) -> `1405AB190` (player 0 wrapper) -> `1405AF110` -> `1405AF010` (assign name to player) -> `14014BA50` (std::string assign).
+
+Names written are 26 chars (`rom/sound/song/pv_NNNN.ogg`-style, copied from the pv entry +0x50).
+
+- `StartPreview(state=rcx, const char* name=rdx, int id=r8d, float xmm3, [rsp+0x20]=float, [rsp+0x28]=float, [rsp+0x30]=bool)`; fields stored in state: +0 mode, +4 id, +8 xmm3, +0xC, +0x10, +0x20 std::string name.
+- The state machine (`1406F7870`) calls it with name = state+0x20 and floats state+8/+0xC/+0x10; the song-list code (`1406EEDE0`, rdx = pv entry) calls it with name = entry+0x50, xmm3 = entry+0x88, stack float = entry+0x8C, second float 0 (entry+0x88/0x8C are most likely the chorus start/length).
+- Plan: DR execute breakpoint on `1406F7650` (like filetrace's); when follow-host is on, replace rdx with our own char buffer (host's file name) and xmm3/stack floats. Needs the guest's cursor/state to trigger it, so best combined with the go-to-song work.
