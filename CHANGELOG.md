@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.3.8 (02.11.2026)
+- Research: "Watch difficulty write" now also runs a hunt for the field that holds the selected difficulty: start
+  several rounds on different difficulties in any order and the `diffhunt` lines in `multidiva.log` list the fields that
+  matched every time. The song select watch scans the selection record out to 0x2000 bytes.
+
 ## 2.3.7 (02.11.2026)
 - Research: "Watch difficulty write" (Ctrl+F8, `research=1`) logs the registers and the code around each write to the
   stage entry's difficulty, to find where song select keeps the selected difficulty. The write watch logs this for every

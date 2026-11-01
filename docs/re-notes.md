@@ -297,5 +297,15 @@ the first 0x600 bytes of the selection record at `0x141750890`: taps changed not
 object is recreated every time song select opens. Next step: a write watch on the stage entry's difficulty field,
 logging registers and the code before the write, to find where the confirm handler reads it from.
 
+Confirm-time difficulty copy (2.3.7 write watch on the stage entry's difficulty, `0x1416E2BF4`): the writer is
+`mov [r14+8], eax` ending at `0x14040B6C5`, after `mov eax,[r15+8]`, with `r14 = entry+0x2C` (the PvId field): a
+function copies three ints (pv, +0x30, difficulty) from a struct at `r15` (a frame-local struct, `0x14D7C0` every time;
+`rbp = 0x14D850`) into the entry; edition follows. Call chain: `14040B66B` <- `1406F2EF6` (the start builder, notes say
+`0x1406F2AE0`) <- `1406F2A8C` <- `1406EE589` <- main loop. Just before, the same function zeroes the entry (`rax =
+0x141750890`, the outfit selection record). `[r12]` with `r12 = 0x1416E2B90` (stage data base) was 0,1,2,3,3 for the
+five rounds of that log, used as `rcx = [r12+8] + 4*[r12]` to index tables at `0x1416E2AD0/B10/B50`: it equals the
+difficulty, but the rounds were played in rising order, so it may also be a round counter capped at 3. 2.3.8 adds a
+"diffhunt" that intersects candidate fields over rounds started in any order.
+
 Confirmed in game (2.3.1 log): pv_db chart level at chart `+0x40` in half stars (pv 96: raw 6/8/10/14 = 3.0/4.0/5.0/7.0,
 EX chart raw 16 = 8.0) and song entry BPM at entry `+0x4C` (pv 96 = 183).

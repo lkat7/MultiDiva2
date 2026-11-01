@@ -17,6 +17,9 @@ static std::atomic<int> s_hits{0};
 static int s_maxHits = 0;
 static uintptr_t s_address = 0;
 static PVOID s_handler = nullptr;
+static void (*s_callback)(void*, int32_t) = nullptr;
+
+void SetHitCallback(void (*callback)(void*, int32_t)) { s_callback = callback; }
 
 static bool InGameCode(uintptr_t a) { return a >= CodeBegin && a < CodeEnd; }
 
@@ -52,6 +55,8 @@ static LONG CALLBACK OnException(EXCEPTION_POINTERS* info)
         stack[len] = 0;
         Log("watch #%d: thread %lu wrote %d after %llX; stack:%s", hit + 1, GetCurrentThreadId(), value,
             (unsigned long long)ctx->Rip, stack);
+        if (s_callback)
+            s_callback(ctx, value);
         // The registers and the code just before Rip, to read where the written value came from (a load from some
         // object's field: the base register's value gives that object's address).
         auto q = [](DWORD64 v) { return (unsigned long long)v; };

@@ -329,6 +329,8 @@ static void WatchRegion(const char* name, uintptr_t base, size_t size, size_t al
     prev = std::move(cur);
 }
 
+uintptr_t ListObject() { return s_listObject; }
+
 void SetListWatch(bool on)
 {
     if (s_listWatch.exchange(on) != on)
@@ -350,7 +352,7 @@ static void WatchSongSelect()
     }
     // The highlighted pv is the int16 at list+0xA88: state next to it is the likely home of the selected difficulty.
     WatchRegion("list", s_listObject, 0x1800, 0xA00, 0xB00, listPrev, listBase);
-    WatchRegion("record", 0x141750890, 0x600, 0, 0x100, recordPrev, recordBase);
+    WatchRegion("record", 0x141750890, 0x2000, 0, 0x100, recordPrev, recordBase);
 }
 
 void Tick()

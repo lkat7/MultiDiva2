@@ -5,6 +5,7 @@
 #include "../core/config.h"
 #include "../core/log.h"
 #include "../core/version.h"
+#include "../game/diffhunt.h"
 #include "../game/launch.h"
 #include "../game/memory.h"
 #include "../game/memscan.h"
@@ -225,10 +226,13 @@ static void DrawLaunchOverride()
         // Which game code writes the stage entry's difficulty (song select copies the selected difficulty there when
         // you confirm): start it in song select, change the difficulty with left/right, confirm, send the log. Each
         // hit logs the registers and the code before the write, which shows where the difficulty is read from.
+        // Start it in song select, then start 4+ rounds on different difficulties in NO particular order (e.g. Extreme,
+        // Easy, Hard, Normal), and send the log: the "diffhunt" lines name the fields that follow the difficulty.
         if (ImGui::Button("Watch difficulty write (research)")) {
             int32_t index = 0;
             SafeRead(addr::StageData + stage::IndexOffset, index);
-            watch::Start(StageEntryAddress(index) + stage::Difficulty);
+            diffhunt::Arm();
+            watch::Start(StageEntryAddress(index) + stage::Difficulty, 60);
         }
         // Song select's per-performer outfit selection for the highlighted song (0x141750890 + 0x1C0).
         if (ImGui::Button("Watch outfit selection (research)"))
