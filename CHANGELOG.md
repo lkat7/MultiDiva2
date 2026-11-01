@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.9 (02.11.2026)
+- Research: the difficulty hunt found stage data `+0x0` equal to the difficulty at every confirm. The song select watch
+  now logs changes to the start of the stage data, to check it follows left/right live.
+
 ## 2.3.8 (02.11.2026)
 - Research: "Watch difficulty write" now also runs a hunt for the field that holds the selected difficulty: start
   several rounds on different difficulties in any order and the `diffhunt` lines in `multidiva.log` list the fields that

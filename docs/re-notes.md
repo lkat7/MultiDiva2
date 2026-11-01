@@ -306,6 +306,10 @@ function copies three ints (pv, +0x30, difficulty) from a struct at `r15` (a fra
 five rounds of that log, used as `rcx = [r12+8] + 4*[r12]` to index tables at `0x1416E2AD0/B10/B50`: it equals the
 difficulty, but the rounds were played in rising order, so it may also be a round counter capped at 3. 2.3.8 adds a
 "diffhunt" that intersects candidate fields over rounds started in any order.
+Result (2.3.8 log, 10 rounds on pv 50 and 402, Easy..Extra each): the only non-trivial surviving field is stage data
+`+0x000` (`0x1416E2B90`), equal to the difficulty at every confirm, and it went back to 0 when the song changed, so it is
+not a round counter. Whether it follows left/right live in song select (so it can be read while browsing) is what the
+2.3.9 song select watch checks ("stage +0x..." lines). Edition (Extra chart) is a separate field, not found yet.
 
 Confirmed in game (2.3.1 log): pv_db chart level at chart `+0x40` in half stars (pv 96: raw 6/8/10/14 = 3.0/4.0/5.0/7.0,
 EX chart raw 16 = 8.0) and song entry BPM at entry `+0x4C` (pv 96 = 183).
