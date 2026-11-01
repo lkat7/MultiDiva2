@@ -23,6 +23,63 @@ void SetHitCallback(void (*callback)(void*, int32_t)) { s_callback = callback; }
 
 static bool InGameCode(uintptr_t a) { return a >= CodeBegin && a < CodeEnd; }
 
+// The exact call chain: the game has x64 unwind tables, so Windows can walk the stack frame by frame. For each
+// frame: the function's start and the return address into its caller. The first 128 bytes of every function seen for
+// the first time are dumped, so each one can be disassembled.
+void LogCallChain(void* contextRecord, const char* tag)
+{
+    CONTEXT uc = *(const CONTEXT*)contextRecord;
+    char frames[768];
+    int flen = 0;
+    static uintptr_t seenFns[160];
+    static int seenFnCount = 0;
+    uintptr_t newFns[12];
+    int newCount = 0;
+    __try {
+        for (int depth = 0; depth < 12; depth++) {
+            DWORD64 image = 0;
+            PRUNTIME_FUNCTION fn = RtlLookupFunctionEntry(uc.Rip, &image, nullptr);
+            if (!fn)
+                break; // no unwind info (a leaf, or the protector's code)
+            uintptr_t start = (uintptr_t)(image + fn->BeginAddress);
+            PVOID handlerData = nullptr;
+            DWORD64 frame = 0;
+            RtlVirtualUnwind(UNW_FLAG_NHANDLER, image, uc.Rip, fn, &uc, &handlerData, &frame, nullptr);
+            flen += wsprintfA(frames + flen, " %08X%08X<-%08X%08X", (DWORD)(start >> 32), (DWORD)start,
+                (DWORD)(uc.Rip >> 32), (DWORD)uc.Rip);
+            bool known = false;
+            for (int k = 0; k < seenFnCount; k++)
+                known |= seenFns[k] == start;
+            if (!known && seenFnCount < 160 && newCount < 12) {
+                seenFns[seenFnCount++] = start;
+                newFns[newCount++] = start;
+            }
+            if (!uc.Rip || flen > 700)
+                break;
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+    frames[flen] = 0;
+    Log("%s: frames (function start<-return into its caller):%s", tag, frames);
+    for (int n = 0; n < newCount; n++) {
+        uint8_t fnCode[128] = {};
+        bool readable = true;
+        __try {
+            memcpy(fnCode, (const void*)newFns[n], sizeof(fnCode));
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            readable = false;
+        }
+        if (!readable)
+            continue;
+        for (size_t row = 0; row < sizeof(fnCode); row += 64) {
+            char hex[64 * 2 + 1];
+            for (size_t b = 0; b < 64; b++)
+                wsprintfA(hex + b * 2, "%02X", fnCode[row + b]);
+            Log("watch: function %llX +%zX: %s", (unsigned long long)newFns[n], row, hex);
+        }
+    }
+}
+
 static LONG CALLBACK OnException(EXCEPTION_POINTERS* info)
 {
     if (info->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP)
@@ -59,60 +116,10 @@ static LONG CALLBACK OnException(EXCEPTION_POINTERS* info)
             (unsigned long long)ctx->Rip, stack);
         if (s_callback)
             s_callback(ctx, value);
-        // The exact call chain: the game has x64 unwind tables, so Windows can walk the stack frame by frame. For each
-        // frame: the function's start and the return address into its caller. The first 128 bytes of every function
-        // seen for the first time are dumped, so each one can be disassembled.
         {
-            CONTEXT uc = *ctx;
-            char frames[768];
-            int flen = 0;
-            static uintptr_t seenFns[96];
-            static int seenFnCount = 0;
-            uintptr_t newFns[12];
-            int newCount = 0;
-            __try {
-                for (int depth = 0; depth < 12; depth++) {
-                    DWORD64 image = 0;
-                    PRUNTIME_FUNCTION fn = RtlLookupFunctionEntry(uc.Rip, &image, nullptr);
-                    if (!fn)
-                        break; // no unwind info (a leaf, or the protector's code)
-                    uintptr_t start = (uintptr_t)(image + fn->BeginAddress);
-                    PVOID handlerData = nullptr;
-                    DWORD64 frame = 0;
-                    RtlVirtualUnwind(UNW_FLAG_NHANDLER, image, uc.Rip, fn, &uc, &handlerData, &frame, nullptr);
-                    flen += wsprintfA(frames + flen, " %08X%08X<-%08X%08X", (DWORD)(start >> 32), (DWORD)start,
-                        (DWORD)(uc.Rip >> 32), (DWORD)uc.Rip);
-                    bool known = false;
-                    for (int k = 0; k < seenFnCount; k++)
-                        known |= seenFns[k] == start;
-                    if (!known && seenFnCount < 96 && newCount < 12) {
-                        seenFns[seenFnCount++] = start;
-                        newFns[newCount++] = start;
-                    }
-                    if (!uc.Rip || flen > 700)
-                        break;
-                }
-            } __except (EXCEPTION_EXECUTE_HANDLER) {
-            }
-            frames[flen] = 0;
-            Log("watch #%d: frames (function start<-return into its caller):%s", hit + 1, frames);
-            for (int n = 0; n < newCount; n++) {
-                uint8_t fnCode[128] = {};
-                bool readable = true;
-                __try {
-                    memcpy(fnCode, (const void*)newFns[n], sizeof(fnCode));
-                } __except (EXCEPTION_EXECUTE_HANDLER) {
-                    readable = false;
-                }
-                if (!readable)
-                    continue;
-                for (size_t row = 0; row < sizeof(fnCode); row += 64) {
-                    char hex[64 * 2 + 1];
-                    for (size_t b = 0; b < 64; b++)
-                        wsprintfA(hex + b * 2, "%02X", fnCode[row + b]);
-                    Log("watch: function %llX +%zX: %s", (unsigned long long)newFns[n], row, hex);
-                }
-            }
+            char tag[32];
+            wsprintfA(tag, "watch #%d", hit + 1);
+            LogCallChain(ctx, tag);
         }
         // The registers and the code just before Rip, to read where the written value came from (a load from some
         // object's field: the base register's value gives that object's address).

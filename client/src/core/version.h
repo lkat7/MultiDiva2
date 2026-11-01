@@ -1,3 +1,3 @@
 #pragma once
 
-#define MULTIDIVA_VERSION "2.4.11"
+#define MULTIDIVA_VERSION "2.4.12"

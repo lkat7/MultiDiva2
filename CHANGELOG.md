@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.12 (02.11.2026)
+- Research: "Trace audio file opens" logs every open of a song audio path (with the call chain of the game functions
+  that ask for it), because searching memory for the file name only found the game's mod-folder path caches.
+
 ## 2.4.11 (02.11.2026)
 - Research toward hearing the host's song: "Find preview player" searches the game's memory for the highlighted song's
   audio file name and logs every place it is kept besides the song database; "Watch preview hit" puts the write watch

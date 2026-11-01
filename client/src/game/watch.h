@@ -10,6 +10,10 @@ namespace md::watch {
 // allocation, only safe memory reads). Null = none.
 void SetHitCallback(void (*callback)(void* contextRecord, int32_t value));
 
+// Logs the exact call chain of a CONTEXT (function start <- return address per frame) and dumps the first 128 bytes of
+// every function met for the first time.
+void LogCallChain(void* contextRecord, const char* tag);
+
 bool Start(uintptr_t address, int maxHits = 24); // 4-byte write watch; false if it could not be set
 void Stop();
 bool Active();

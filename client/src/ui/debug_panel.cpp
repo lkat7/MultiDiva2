@@ -6,6 +6,7 @@
 #include "../core/log.h"
 #include "../core/version.h"
 #include "../game/diffhunt.h"
+#include "../game/filetrace.h"
 #include "../game/launch.h"
 #include "../game/memory.h"
 #include "../game/memscan.h"
@@ -342,6 +343,15 @@ static void DrawLaunchOverride()
         ImGui::SameLine();
         if (ImGui::Button("Watch preview hit (research)"))
             songs::WatchPreviewHit(previewHit);
+        // Which game code opens a song's audio file? Start it, then move the highlight over a few songs (the preview
+        // starts after the highlight settles), and Stop it: the log lists each open of a "sound/song" or ".ogg" path
+        // with the call chain of the game functions behind it.
+        if (!filetrace::Active()) {
+            if (ImGui::Button("Trace audio file opens (research)"))
+                filetrace::Start();
+        } else if (ImGui::Button("Stop tracing audio file opens")) {
+            filetrace::Stop();
+        }
         // The player profile: type the in-game profile name, then find it in memory (UTF-8 and UTF-16 hits are logged).
         static char profileName[64] = "";
         ImGui::SetNextItemWidth(220);
