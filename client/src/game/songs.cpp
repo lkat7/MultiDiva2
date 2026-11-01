@@ -352,7 +352,7 @@ static void WatchSongSelect()
     }
     // The highlighted pv is the int16 at list+0xA88: state next to it is the likely home of the selected difficulty.
     WatchRegion("list", s_listObject, 0x1800, 0xA00, 0xB00, listPrev, listBase);
-    WatchRegion("record", 0x141750890, 0x2000, 0, 0x100, recordPrev, recordBase);
+    WatchRegion("record", 0x141750890, 0x600, 0, 0x100, recordPrev, recordBase);
     // The stage data header: its first int equalled the difficulty at every confirm (2.3.8 diffhunt). If it also moves
     // while left/right change the difficulty, it can be read live.
     WatchRegion("stage", md::addr::StageData, 0x40, 0, 0x40, stagePrev, stageBase);

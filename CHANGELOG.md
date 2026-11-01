@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.10 (02.11.2026)
+- Research: the song select watch crashed the game in 2.3.9. The selection record scan is back to the 0x600 bytes
+  that worked before (2.3.8 had widened it to 0x2000, the likeliest cause), and nothing else changed in the watch.
+
 ## 2.3.9 (02.11.2026)
 - Research: the difficulty hunt found stage data `+0x0` equal to the difficulty at every confirm. The song select watch
   now logs changes to the start of the stage data, to check it follows left/right live.
