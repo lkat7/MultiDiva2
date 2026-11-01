@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"github.com/coder/websocket"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSpectatePage(t *testing.T) {
@@ -76,5 +79,60 @@ func TestSpectatePageServed(t *testing.T) {
 	httpHandler(hub, false).ServeHTTP(rec, httptest.NewRequest("GET", "/api/rooms", nil))
 	if rec.Code != 404 {
 		t.Fatalf("spectate off: %d", rec.Code)
+	}
+}
+
+func TestSpectateWebSocket(t *testing.T) {
+	url, hub := startServerHub(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, strings.TrimSuffix(url, "/ws")+"/spectate-ws", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+	next := func(pred func(SpectateMsg) bool) SpectateMsg {
+		t.Helper()
+		for {
+			_, data, err := conn.Read(ctx)
+			if err != nil {
+				t.Fatalf("read: %v", err)
+			}
+			var m SpectateMsg
+			if err := json.Unmarshal(data, &m); err != nil {
+				t.Fatal(err)
+			}
+			if pred(m) {
+				return m
+			}
+		}
+	}
+	next(func(m SpectateMsg) bool { return len(m.Rooms) == 0 }) // first snapshot arrives without asking
+
+	// A change is pushed by itself.
+	host := connect(t, url, "Host")
+	host.send("join", JoinMsg{Room: "Miku"})
+	m := next(func(m SpectateMsg) bool { return len(m.Rooms) == 1 })
+	if m.Rooms[0].Players[0].Name != "Host" {
+		t.Fatalf("pushed: %+v", m)
+	}
+	host.send("score", Score{Score: 1})
+	host.conn.Close(websocket.StatusNormalClosure, "")
+	next(func(m SpectateMsg) bool { return len(m.Rooms) == 0 })
+
+	// Closing the page stops the sampling goroutine.
+	conn.Close(websocket.StatusNormalClosure, "")
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		hub.spectators.mu.Lock()
+		idle := !hub.spectators.running
+		hub.spectators.mu.Unlock()
+		if idle {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("sampling goroutine still running after the last page left")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

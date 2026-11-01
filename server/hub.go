@@ -27,6 +27,8 @@ type Hub struct {
 	probeWait   time.Duration
 	sessions    map[string]*Client
 
+	spectators spectators // spectator pages listening on /spectate-ws
+
 	plays *PlayLog // finished rounds appended to a text file; nil = off
 }
 

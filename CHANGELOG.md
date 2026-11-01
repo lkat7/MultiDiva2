@@ -3,8 +3,9 @@
 ## 2.2.1-dev.1 (02.11.2026)
 - Server: a spectator web page at the server's address (`/`): every room with its state, players and song, a live
   leaderboard while a round plays (score, combo, completion bar, finished/failed) and the previous round's ranking.
-  Read-only, no chat. `GET /api/rooms` gives the same data as JSON; `-spectate=false` turns both off. See
-  `docs/hosting.md`.
+  The page listens on a WebSocket (`/spectate-ws`): the server pushes a snapshot only when something changed, and
+  stops sampling when no page is open. Read-only, no chat. `GET /api/rooms` gives the same data as JSON once;
+  `-spectate=false` turns it all off. See `docs/hosting.md`.
 
 ## 2.2.1 (02.11.2026)
 

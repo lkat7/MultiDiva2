@@ -142,32 +142,39 @@ function roomCard(r) {
 
 const root = document.getElementById("rooms"), status = document.getElementById("status");
 const openDetails = new Set();
-async function refresh() {
-  try {
-    const res = await fetch("/api/rooms", { cache: "no-store" });
-    const data = await res.json();
-    root.querySelectorAll("section").forEach(s => {
-      const d = s.querySelector("details");
-      const n = s.querySelector("h2").textContent;
-      if (d && d.open) openDetails.add(n); else openDetails.delete(n);
-    });
-    root.replaceChildren();
-    if (!data.rooms.length) root.append(el("div", "empty", "No rooms right now."));
-    data.rooms.forEach(r => {
-      const card = roomCard(r);
-      const d = card.querySelector("details");
-      if (d && openDetails.has(r.name)) d.open = true;
-      root.append(card);
-    });
-    status.textContent = "live · server " + data.server;
-    status.style.color = "";
-  } catch (e) {
-    status.textContent = "offline, retrying…";
-    status.style.color = "var(--bad)";
-  }
+
+function render(data) {
+  root.querySelectorAll("section").forEach(sec => {
+    const d = sec.querySelector("details");
+    const n = sec.querySelector("h2").textContent;
+    if (d && d.open) openDetails.add(n); else openDetails.delete(n);
+  });
+  root.replaceChildren();
+  if (!data.rooms.length) root.append(el("div", "empty", "No rooms right now."));
+  data.rooms.forEach(r => {
+    const card = roomCard(r);
+    const d = card.querySelector("details");
+    if (d && openDetails.has(r.name)) d.open = true;
+    root.append(card);
+  });
+  status.textContent = "live \u00b7 server " + data.server;
+  status.style.color = "";
 }
-refresh();
-setInterval(refresh, 1000);
+
+// The server pushes a snapshot whenever something changes; reconnect with a growing pause when the socket drops.
+let retry = 1000;
+function connect() {
+  const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/spectate-ws");
+  ws.onopen = () => { retry = 1000; };
+  ws.onmessage = e => { try { render(JSON.parse(e.data)); } catch (_) {} };
+  ws.onclose = () => {
+    status.textContent = "offline, reconnecting\u2026";
+    status.style.color = "var(--bad)";
+    setTimeout(connect, retry);
+    retry = Math.min(retry * 2, 15000);
+  };
+}
+connect();
 </script>
 </body>
 </html>
