@@ -335,8 +335,21 @@ void SetListWatch(bool on)
         Log("songs: song select watch %s", on ? "on" : "off");
 }
 
+std::string SelectionTag()
+{
+    uintptr_t obj = s_listObject;
+    char tag[5] = {};
+    if (!obj || !SafeCopy(tag, (const void*)(obj + 0xADC), 4))
+        return {};
+    for (int i = 0; i < 4; i++)
+        if ((unsigned char)tag[i] < 0x20 || (unsigned char)tag[i] > 0x7E)
+            return {};
+    return tag;
+}
+
 static void WatchSongSelect()
 {
+    static std::string lastTag;
     static std::vector<int32_t> listPrev, recordPrev;
     static uintptr_t listBase = 0, recordBase = 0;
     static int32_t lastPv = -2;
@@ -351,6 +364,12 @@ static void WatchSongSelect()
     // The highlighted pv is the int16 at list+0xA88: state next to it is the likely home of the selected difficulty.
     WatchRegion("list", s_listObject, 0x1800, 0xA00, 0xB00, listPrev, listBase);
     WatchRegion("record", 0x141750890, 0x600, 0, 0x100, recordPrev, recordBase);
+    std::string tag = SelectionTag();
+    if (tag != lastTag) {
+        lastTag = tag;
+        Log("songs: selection tag \"%s\" on pv %d (charts: easy %d normal %d hard %d extreme %d extra %d)", tag.c_str(),
+            pv, (int)Has(pv, 0, 0), (int)Has(pv, 1, 0), (int)Has(pv, 2, 0), (int)Has(pv, 3, 0), (int)Has(pv, 3, 1));
+    }
 }
 
 void Tick()

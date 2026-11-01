@@ -26,6 +26,10 @@ float Level(int32_t pv, int32_t difficulty, int32_t edition);
 // The song's tempo in BPM, -1 if unknown (same caveat as Level). Game thread only; cached.
 int32_t Bpm(int32_t pv);
 
+// The 4-character tag at song list object +0xADC ("p_02".."p_04") that follows the left/right keys in song select (the
+// candidate for the selected difficulty), "" if unknown. Game thread.
+std::string SelectionTag();
+
 // Research: while on, every frame in song select, logs each int32 in the song list object (the highlight hook's rcx)
 // and in song select's selection record that changes between two values 0..4 (difficulty / edition look like that),
 // plus every highlight change. Change the difficulty in song select a few times, then read the log: the offset that

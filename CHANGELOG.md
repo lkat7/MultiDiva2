@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.6 (02.11.2026)
+- Research: song select's left/right tag (`p_02`..`p_04`, probably the selected difficulty) is logged when it changes
+  and next to the difficulty of every round started, to map one to the other.
+
 ## 2.3.5 (02.11.2026)
 - Research: the input watch names the buttons in each change, and the song select watch lists which charts each
   highlighted song has. The 2.3.3 log showed the arrow keys only move the song list, so the key that changes the

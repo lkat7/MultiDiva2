@@ -1,4 +1,5 @@
 #include "session.h"
+#include "songs.h"
 #include "launch.h"
 #include "pause_guard.h"
 #include "round_finder.h"
@@ -59,7 +60,8 @@ static void Handle(const GameEvent& e)
             Log("PvGameInit stage=%d pv=%d diff=%d edition=%d (OVERRIDDEN, game had picked pv=%d)",
                 e.stageIndex, e.pvId, e.difficulty, e.edition, e.originalPvId);
         else
-            Log("PvGameInit stage=%d pv=%d diff=%d edition=%d", e.stageIndex, e.pvId, e.difficulty, e.edition);
+            Log("PvGameInit stage=%d pv=%d diff=%d edition=%d (song select tag \"%s\")", e.stageIndex, e.pvId,
+                e.difficulty, e.edition, songs::SelectionTag().c_str());
         Log("  modules: %d %d %d %d %d %d", e.modules[0], e.modules[1], e.modules[2], e.modules[3], e.modules[4], e.modules[5]);
         s.inSong = true;
         s.inResult = false;

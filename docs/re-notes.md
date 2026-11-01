@@ -289,10 +289,11 @@ Song select input (2.3.1 log, button log on): `button_tapped` button 5 is checke
 RIGHT 6), so they are the left/right handlers that change the selection. Chart struct: `+0x00` difficulty, `+0x04`
 edition, `+0x40` level (half stars), `+0x44` level sort index.
 
-2.3.3 song select log: UP/DOWN/LEFT/RIGHT (input bits 3-6) all move the highlighted song and change no watched field that
-looks like a difficulty; the song list object's int16 at `+0xA88` is the highlighted pv and `+0xADC`/`+0xAFC` hold a
-4-char tag `p_02`..`p_04` that cycles with the arrows and song changes (probably the carousel slot, not the difficulty).
-The key that changes the difficulty has not been captured yet.
+2.3.3 song select log (left/right change the difficulty, up/down the song): the song list object's int16 at `+0xA88`
+is the highlighted pv. `+0xADC` (and a copy at `+0xAFC`) holds a 4-char tag `p_02`..`p_04`: LEFT lowers and RIGHT raises
+it, with wrap-around, and it moves when the song changes (the difficulty clamps to the new song's charts), so it is the
+candidate for the selected difficulty. Its digit has not been mapped to a difficulty yet: `PvGameInit` now logs the tag
+next to the difficulty actually started, which builds the mapping.
 
 Confirmed in game (2.3.1 log): pv_db chart level at chart `+0x40` in half stars (pv 96: raw 6/8/10/14 = 3.0/4.0/5.0/7.0,
 EX chart raw 16 = 8.0) and song entry BPM at entry `+0x4C` (pv 96 = 183).
