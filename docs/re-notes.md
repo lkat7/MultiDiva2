@@ -373,3 +373,13 @@ Open (what is needed to jump the cursor to a song id): (1) the tab index field a
 wrap with Q from tab 0); (2) the list control's "go to this song" function, the one random landing and the sort/tab
 rebuild use to keep the cursor on a song (it takes a song id or an item pointer); its entry registers, via a watch on its
 first instruction. Tools: write watch + unwound frames (2.4.7), object watch with tapped buttons (2.4.10).
+
+## Sound streams (2.4.12 file open trace)
+
+A song's `.ogg` reaches `CreateFileW` (the file layer probes every mod folder in turn, then `rom`) through this chain on
+the main thread: `14099492C` (C runtime fopen-like) <- `140995424` <- `140172C40` (file wrapper) <- `14016BFA6` (path
+normalisation, looks for `rom/`) <- `1402A5330` <- `1405AF560` (starts streaming a file) <- `1405AF420` (state machine,
+jump table for states 0..6, state at object `+0x50`) <- `1405AF2A0` (per-object update) <- `1405AED20` (loops over the three
+objects, 0x58 bytes each, global array at `0x14CBFF0A0`) <- `1405AA037` <- `1402B68C0` <- the task loop. So the game has
+three stream players updated every frame; the preview/BGM/voice use them. The request that starts a stream is made by
+other code earlier (the open runs from the update loop), so a write watch on a player's state field is the way to find it.

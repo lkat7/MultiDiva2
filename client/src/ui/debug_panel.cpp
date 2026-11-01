@@ -15,6 +15,7 @@
 #include "../game/session.h"
 #include "../game/sigs.h"
 #include "../game/songs.h"
+#include "../game/streams.h"
 #include "../game/sync_start.h"
 #include "../game/watch.h"
 
@@ -352,6 +353,17 @@ static void DrawLaunchOverride()
         } else if (ImGui::Button("Stop tracing audio file opens")) {
             filetrace::Stop();
         }
+        // The game has three sound stream players (global array). Highlight a song and wait until its preview plays, then
+        // press Dump: the active one (non-zero state, a file name) is the preview. Then watch that player's state while
+        // moving the highlight to another song: the log names the code that starts a stream.
+        if (ImGui::Button("Dump sound stream players (research)"))
+            streams::Dump();
+        static int streamIndex = 0;
+        ImGui::SetNextItemWidth(60);
+        ImGui::InputInt("Player", &streamIndex, 0);
+        ImGui::SameLine();
+        if (ImGui::Button("Watch that player's state (research)"))
+            streams::WatchState(streamIndex);
         // The player profile: type the in-game profile name, then find it in memory (UTF-8 and UTF-16 hits are logged).
         static char profileName[64] = "";
         ImGui::SetNextItemWidth(220);

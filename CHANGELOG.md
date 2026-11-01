@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.13 (02.11.2026)
+- Research: the audio file open trace showed the game plays songs through three fixed stream players. "Dump sound
+  stream players" logs them and "Watch that player's state" logs what starts a stream, with the exact call chain.
+
 ## 2.4.12 (02.11.2026)
 - Research: "Trace audio file opens" logs every open of a song audio path (with the call chain of the game functions
   that ask for it), because searching memory for the file name only found the game's mod-folder path caches.
