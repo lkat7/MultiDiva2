@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.4 (02.11.2026)
+- Add/Remove Miku Bot moved into the options section of the F8 window; the cover there is half the size.
+- Covers of mod songs: a song whose jacket sprite isn't named like the game's own now falls back to any `SONG_JK...`
+  sprite in its set, and `multidiva.log` says why when a cover can't be shown (`jackets:` lines).
+
 ## 2.4.3 (02.11.2026)
 - The F8 window shows the cover (the game's own jacket) of the host's highlighted song, and of the last song played,
   next to its lines. The full-screen room already did.

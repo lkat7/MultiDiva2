@@ -377,7 +377,7 @@ static void DrawRoundStatus(const mp::State& s)
         if (title.empty())
             title = !s.hoverTitle.empty() ? s.hoverTitle : titles::Describe(s.hover);
         // The cover on the left, the song's lines to its right.
-        DrawJacket(s.hover, ImGui::GetFrameHeightWithSpacing() * 3);
+        DrawJacket(s.hover, ImGui::GetFrameHeightWithSpacing() * 1.5f); // half the height of its three lines
         ImGui::SameLine();
         ImGui::BeginGroup();
         if (mp::IsHost())
@@ -427,16 +427,6 @@ static void DrawRoundStatus(const mp::State& s)
             ImGui::TextColored(Accent, "Everyone is ready: start any song in song select to start the round.");
         else
             ImGui::TextColored(Dim, "Waiting for %d player%s to get ready.", notReady, notReady == 1 ? "" : "s");
-
-        // No one to play with: a bot player that joins this room and follows your score.
-        if (host::BotRunning()) {
-            if (ImGui::Button("Remove Miku Bot"))
-                host::StopBot();
-        } else if (ImGui::Button("Add Miku Bot")) {
-            host::StartBot(mp::ServerUrl(), s.roomName);
-        }
-        ImGui::SameLine();
-        ImGui::TextColored(Dim, "A practice opponent that stays close to your score.");
     } else {
         const mp::Player* me = mp::Me();
         bool ready = me && me->ready;
@@ -447,7 +437,7 @@ static void DrawRoundStatus(const mp::State& s)
     }
 
     if (s.pick) {
-        DrawJacket(s.pick->pv, ImGui::GetFrameHeightWithSpacing() * 2);
+        DrawJacket(s.pick->pv, ImGui::GetFrameHeightWithSpacing());
         ImGui::SameLine();
         ImGui::BeginGroup();
         ImGui::TextColored(Dim, "Last song: %s", PickName(*s.pick).c_str());
@@ -858,6 +848,17 @@ void DrawLobby(bool* open)
         DrawRoundStatus(s);
         ImGui::Separator(); // status above, options below
         Config& cfg = GetConfig();
+        if (mp::IsHost() && s.roomState == "lobby") {
+            // No one to play with: a bot player that joins this room and follows your score.
+            if (host::BotRunning()) {
+                if (ImGui::Button("Remove Miku Bot"))
+                    host::StopBot();
+            } else if (ImGui::Button("Add Miku Bot")) {
+                host::StartBot(mp::ServerUrl(), s.roomName);
+            }
+            ImGui::SameLine();
+            ImGui::TextColored(Dim, "A practice opponent that stays close to your score.");
+        }
         if (ImGui::Checkbox("Live leaderboard", &cfg.showLeaderboard))
             SaveConfig();
         ImGui::SameLine();

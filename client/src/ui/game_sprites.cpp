@@ -186,7 +186,7 @@ static bool CodeLooksRight()
 
 struct Jacket {
     uint32_t setId = 0xFFFFFFFF, index = 0;
-    bool requested = false, failed = false;
+    bool requested = false, failed = false, loggedMissing = false;
     int waitFrames = 0;
     SetCache cache;
     DWORD usedAt = 0;
@@ -271,12 +271,31 @@ const Sprite* Jacket(int pv)
     snprintf(name, sizeof(name), "SONG_JK%03d", pv);
     if (j.cache.done) {
         auto it = j.cache.sprites.find(name);
+        if (it == j.cache.sprites.end()) {
+            // A mod song may name its jacket differently: take any "SONG_JK..." sprite that isn't the Extra chart's.
+            for (auto cand = j.cache.sprites.begin(); cand != j.cache.sprites.end(); ++cand)
+                if (cand->first.rfind("SONG_JK", 0) == 0 && cand->first.find("_EX") == std::string::npos) {
+                    it = cand;
+                    break;
+                }
+            if (!j.loggedMissing) {
+                j.loggedMissing = true;
+                std::string names;
+                int n = 0;
+                for (const auto& [sprite, unused] : j.cache.sprites)
+                    if (n++ < 12)
+                        names += " " + sprite;
+                Log("jackets: pv %d: set loaded, no sprite %s%s; sprites:%s", pv, name,
+                    it == j.cache.sprites.end() ? "" : " (using another SONG_JK one)", names.c_str());
+            }
+        }
         return it == j.cache.sprites.end() ? nullptr : &it->second;
     }
 #ifndef MD_SPRITE_PACK
     if (!j.requested && !j.failed && jk::CodeLooksRight()) {
         if (!jk::Lookup(pv, j.setId, j.index)) {
             j.failed = true; // no select set for this song (or not installed)
+            Log("jackets: pv %d has no select set (SPR_SEL_PV%03d not in the sprite database)", pv, pv);
         } else if (jk::SetReadyNow(j.index) && CopySet(j.index, j.cache)) {
             // already loaded by the game (song select has it highlighted)
         } else {
