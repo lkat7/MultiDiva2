@@ -24,9 +24,6 @@ add_library(MultiDiva SHARED
     client/src/core/crash.cpp
     client/src/core/log.cpp
     client/src/core/mod.cpp
-    client/src/game/diffhunt.cpp
-    client/src/game/filetrace.cpp
-    client/src/game/gamedump.cpp
     client/src/game/hooks.cpp
     client/src/game/launch.cpp
     client/src/game/memory.cpp
@@ -37,7 +34,6 @@ add_library(MultiDiva SHARED
     client/src/game/sigs.cpp
     client/src/game/sigscan.cpp
     client/src/game/songs.cpp
-    client/src/game/streams.cpp
     client/src/game/steam.cpp
     client/src/game/sync_start.cpp
     client/src/game/titles.cpp

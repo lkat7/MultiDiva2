@@ -5,9 +5,6 @@
 #include "../core/config.h"
 #include "../core/log.h"
 #include "../core/version.h"
-#include "../game/diffhunt.h"
-#include "../game/filetrace.h"
-#include "../game/gamedump.h"
 #include "../game/launch.h"
 #include "../game/memory.h"
 #include "../game/memscan.h"
@@ -16,7 +13,6 @@
 #include "../game/session.h"
 #include "../game/sigs.h"
 #include "../game/songs.h"
-#include "../game/streams.h"
 #include "../game/sync_start.h"
 #include "../game/watch.h"
 
@@ -226,22 +222,6 @@ static void DrawLaunchOverride()
             SafeRead(addr::StageData + stage::IndexOffset, index);
             watch::Start(StageEntryAddress(index) + stage::Modules);
         }
-        // Which game code writes the stage entry's difficulty (song select copies the selected difficulty there when
-        // you confirm): start it in song select, change the difficulty with left/right, confirm, send the log. Each
-        // hit logs the registers and the code before the write, which shows where the difficulty is read from.
-        // Start it in song select, then start 4+ rounds on different difficulties in NO particular order (e.g. Extreme,
-        // Easy, Hard, Normal), and send the log: the "diffhunt" lines name the fields that follow the difficulty.
-        if (ImGui::Button("Watch difficulty write (research)")) {
-            int32_t index = 0;
-            SafeRead(addr::StageData + stage::IndexOffset, index);
-            diffhunt::Arm();
-            watch::Start(StageEntryAddress(index) + stage::Difficulty, 60);
-        }
-        // Which game code sets the highlighted song (song list object +0xA88, a 4-byte write): start it in song select,
-        // press down a few times, use Random once, send the log. The stack and code around each write show the function
-        // that moves the cursor and who calls it.
-        if (ImGui::Button("Watch highlight write (research)"))
-            songs::StartHighlightWatch();
         // Song select's per-performer outfit selection for the highlighted song (0x141750890 + 0x1C0).
         if (ImGui::Button("Watch outfit selection (research)"))
             watch::Start(0x141750A50, 40);
@@ -267,89 +247,6 @@ static void DrawLaunchOverride()
         if (ImGui::Button("Watch pause menu state (research)"))
             watch::Start(0x14CC0CA90 + 0x70, 12);
 
-        // ---- layouts taken from ReDIVA (the Arcade game), to confirm on Mega Mix+ ----
-        // Level and BPM: the song's pv_db entry and chart struct as int32s. Compare with the star rating and tempo the
-        // game shows for that chart: the number is at the offset songs.cpp assumes (EntryBpm 0x4C, ChartLevel 0x40;
-        // the level is in half stars, 15 = 7.5).
-        if (ImGui::Button("Dump pick/highlight entry + chart (research)")) {
-            const mp::State& ms = mp::Get();
-            int32_t pv = ms.pick ? ms.pick->pv : songs::Hovered();
-            if (pv >= 0)
-                songs::DumpChart(pv, ms.pick ? ms.pick->difficulty : 3, ms.pick ? ms.pick->edition : 0);
-            else
-                Log("songs: nothing picked or highlighted to dump");
-        }
-        // Button presses: which call checks song select's confirm button (press Enter / Cross on song select).
-        static bool buttonLog = false;
-        if (ImGui::Checkbox("Log button presses (research)", &buttonLog))
-            pause::SetButtonLog(buttonLog);
-        // The input object's bitsets: tap, hold and release buttons while playing and read the changed bytes in the log.
-        static bool watchInput = false;
-        static uint8_t lastInput[0x80] = {};
-        ImGui::Checkbox("Watch input state while pressing buttons (research)", &watchInput);
-        if (watchInput) {
-            uint8_t now[sizeof(lastInput)] = {};
-            if (const void* input = pause::InputObject(); input && SafeCopy(now, input, sizeof(now))) {
-                for (size_t row = 0; row < sizeof(now); row += 16) {
-                    if (memcmp(now + row, lastInput + row, 16) == 0)
-                        continue;
-                    char hex[16 * 3 + 1] = {};
-                    for (int i = 0; i < 16; i++)
-                        snprintf(hex + i * 3, 4, "%02X ", now[row + i]);
-                    // The bits set, as the game's button numbers (ReDIVA InputButton: UP 3, DOWN 4, LEFT 5, RIGHT 6,
-                    // TRIANGLE 7, SQUARE 8, CROSS 9, CIRCLE 10, L 11, R 12).
-                    static const char* names[] = { "TEST", "SERVICE", "START", "UP", "DOWN", "LEFT", "RIGHT", "TRIANGLE",
-                        "SQUARE", "CROSS", "CIRCLE", "L", "R" };
-                    std::string bits;
-                    for (int b = 0; b < 128; b++)
-                        if (now[row + b / 8] & (1 << (b % 8))) {
-                            bits += " " + std::to_string(b);
-                            if (b < (int)(sizeof(names) / sizeof(*names)))
-                                bits += std::string("(") + names[b] + ")";
-                        }
-                    Log("input: +0x%02zX  %s |%s", row, hex, bits.empty() ? " none" : bits.c_str());
-                }
-                memcpy(lastInput, now, sizeof(lastInput));
-            }
-        }
-        // Where song select keeps the selected difficulty: turn this on in song select, then use whichever key CHANGES
-        // THE DIFFICULTY (the arrows only move the song list) a few times on a song with all its charts, then send the log.
-        // Also tick "Watch input state" above so the log names the buttons you pressed.
-        static bool watchSelect = false;
-        if (ImGui::Checkbox("Watch song select for the difficulty (research)", &watchSelect)) {
-            songs::SetListWatch(watchSelect);
-            pause::SetButtonLog(watchSelect); // button taps in the same log, to line up with what changes
-        }
-        // The tab (Q/E), the sort (T) and the difficulty live in the song select object: with this on, press T four times
-        // (a second apart), then E through every tab and Q back, then send the log.
-        static bool watchObject = false;
-        if (ImGui::Checkbox("Watch the song select object: tab and sort (research)", &watchObject))
-            songs::SetSelectObjectWatch(watchObject);
-        // Which game code opens a song's audio file? Start it, then move the highlight over a few songs (the preview
-        // starts after the highlight settles), and Stop it: the log lists each open of a "sound/song" or ".ogg" path
-        // with the call chain of the game functions behind it.
-        if (!filetrace::Active()) {
-            if (ImGui::Button("Trace audio file opens (research)"))
-                filetrace::Start();
-        } else if (ImGui::Button("Stop tracing audio file opens")) {
-            filetrace::Stop();
-        }
-        // The game's code for reading in Ghidra (docs/ghidra.md): write it to %LOCALAPPDATA%\MultiDiva2\dump. Press it on
-        // song select (the protector has decrypted the code by then). Takes a few seconds; the file is for your own use.
-        if (ImGui::Button("Dump game image to file for Ghidra (research)"))
-            gamedump::Write();
-        // The game has three sound stream players (global array). Highlight a song and wait until its preview plays, then
-        // press Dump: the active one (a file name, a playback time that counts up) is the preview (player 0 so far).
-        // Then watch that player's file name while moving the highlight to another song: the log names the code that
-        // starts a stream.
-        if (ImGui::Button("Dump sound stream players (research)"))
-            streams::Dump();
-        static int streamIndex = 0;
-        ImGui::SetNextItemWidth(60);
-        ImGui::InputInt("Player", &streamIndex, 0);
-        ImGui::SameLine();
-        if (ImGui::Button("Watch that player's file name (research)"))
-            streams::WatchName(streamIndex);
         // The player profile: type the in-game profile name, then find it in memory (UTF-8 and UTF-16 hits are logged).
         static char profileName[64] = "";
         ImGui::SetNextItemWidth(220);

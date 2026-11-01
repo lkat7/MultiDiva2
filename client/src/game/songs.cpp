@@ -1,7 +1,5 @@
 #include "songs.h"
 #include "launch.h"
-#include "pause_guard.h"
-#include "watch.h"
 #include "memory.h"
 #include "../core/log.h"
 
@@ -38,8 +36,6 @@ using PvEntryFn = void**(__fastcall*)(void* db, int32_t pv);
 using PvChartFn = void*(__fastcall*)(void* entry, int32_t difficulty, int32_t edition);
 
 static std::atomic<int32_t> s_highlighted{-1};
-static std::atomic<uintptr_t> s_listObject{0}; // the song list object seen by the highlight hook (rcx)
-static std::atomic<bool> s_listWatch{false};
 
 template <size_t N> static bool CodeIs(uintptr_t address, const uint8_t (&bytes)[N])
 {
@@ -77,7 +73,6 @@ static LONG CALLBACK OnBreakpoint(EXCEPTION_POINTERS* info)
     int16_t pv = -1;
     if (SafeRead(ctx->Rcx + addr::HighlightPv, pv))
         s_highlighted = pv;
-    s_listObject = ctx->Rcx;
     ctx->Dr6 &= ~2ull;
     ctx->EFlags |= 0x10000; // RF: run the instruction without breaking on it again
     return EXCEPTION_CONTINUE_EXECUTION;
@@ -233,26 +228,6 @@ int32_t Bpm(int32_t pv)
     return bpm;
 }
 
-void DumpChart(int32_t pv, int32_t difficulty, int32_t edition)
-{
-    if (!CodeOk() || !Has(pv))
-        return;
-    void* entry = Entry(pv);
-    void* chart = Chart(entry, difficulty, edition);
-    Log("songs: pv %d diff %d edition %d: entry %p chart %p, level %.1f bpm %d", pv, difficulty, edition, entry, chart,
-        Level(pv, difficulty, edition), Bpm(pv));
-    auto dump = [](const char* what, void* base, size_t bytes) {
-        for (size_t off = 0; base && off < bytes; off += 16) {
-            int32_t w[4] = {};
-            if (!SafeRead((uintptr_t)base + off, w))
-                break;
-            Log("songs:   %s +0x%03zX: %d %d %d %d", what, off, w[0], w[1], w[2], w[3]);
-        }
-    };
-    dump("entry", entry, 0x80);
-    dump("chart", chart, 0x100);
-}
-
 std::string Title(int32_t pv)
 {
     // pv_db entries are 0x3E0 bytes; +0x08 is the song name as song select shows it (the game's language),
@@ -309,165 +284,8 @@ void Install()
     Log("songs: highlight breakpoint set on %lu thread(s)", Arm());
 }
 
-// One region of the research watch: int32s that flip between two values 0..4 are logged with their offset, and every
-// change inside [allFrom, allTo) is logged whatever its value (the field may be a byte, a short or a bigger enum).
-static void WatchRegion(const char* name, uintptr_t base, size_t size, size_t allFrom, size_t allTo,
-    std::vector<int32_t>& prev, uintptr_t& prevBase)
-{
-    std::vector<int32_t> cur(size / 4, 0x7FFFFFFF);
-    if (!base)
-        return;
-    bool any = false;
-    for (size_t off = 0; off < size; off += 0x100) { // chunks: the object may be shorter than the span, or have holes
-        size_t n = size - off < 0x100 ? size - off : 0x100; // the last chunk may be short (the stage data is 0x40)
-        any |= SafeCopy(cur.data() + off / 4, (const void*)(base + off), n);
-    }
-    if (!any)
-        return;
-    if (prevBase != base || prev.size() != cur.size()) {
-        prev = cur;
-        prevBase = base;
-        Log("songs: watching %s at %llX (%zu bytes)", name, (unsigned long long)base, size);
-        return;
-    }
-    static DWORD windowStart = 0;
-    static int lines = 0;
-    DWORD now = GetTickCount();
-    if (now - windowStart > 1000)
-        windowStart = now, lines = 0;
-    for (size_t i = 0; i < cur.size(); i++) {
-        if (cur[i] == prev[i] || cur[i] == 0x7FFFFFFF || prev[i] == 0x7FFFFFFF)
-            continue;
-        // Small numbers (0..9) that step between values: a difficulty, a tab or a sort mode looks like that.
-        bool small = cur[i] >= 0 && cur[i] <= 9 && prev[i] >= 0 && prev[i] <= 9;
-        bool inSpan = i * 4 >= allFrom && i * 4 < allTo;
-        if ((small || inSpan) && lines++ < 200) // at most 200 lines a second: animation counters can be noisy
-            Log("songs: %s +0x%03zX: %d -> %d (0x%X -> 0x%X)%s", name, i * 4, prev[i], cur[i], (unsigned)prev[i],
-                (unsigned)cur[i], small ? " *" : "");
-    }
-    prev = std::move(cur);
-}
-
-uintptr_t ListObject() { return s_listObject; }
-
-static std::atomic<bool> s_highlightWatch{false};
-
-bool StartHighlightWatch()
-{
-    uintptr_t list = s_listObject;
-    if (!list || !launch::InSongSelect()) {
-        Log("watch: no song list object yet, open song select first");
-        return false;
-    }
-    watch::SetHitCallback(nullptr);
-    bool ok = watch::Start(list + 0xA88, 80);
-    s_highlightWatch = ok;
-    return ok;
-}
-
-void SetListWatch(bool on)
-{
-    if (s_listWatch.exchange(on) != on)
-        Log("songs: song select watch %s", on ? "on" : "off");
-}
-
-static std::atomic<bool> s_objectWatch{false};
-
-void SetSelectObjectWatch(bool on)
-{
-    if (s_objectWatch.exchange(on) != on)
-        Log("songs: song select object watch %s", on ? "on" : "off");
-}
-
-// The song select object: the list (s_listObject) is a member of it at +0x3380 (the writer of the highlighted song had
-// rcx = list and rdi = this object). Its song-to-start copy is at +0x262A4, so 0x26400 bytes cover what we know of it.
-static void WatchSelectObject()
-{
-    constexpr size_t ListOffset = 0x3380, Size = 0x26400;
-    static std::vector<int32_t> last, settled;
-    static std::vector<uint8_t> stable;
-    static uintptr_t base = 0;
-    uintptr_t list = s_listObject;
-    if (!list || !launch::InSongSelect())
-        return;
-    uintptr_t object = list - ListOffset;
-    std::vector<int32_t> cur(Size / 4, 0x7FFFFFFF);
-    bool any = false;
-    for (size_t off = 0; off < Size; off += 0x100)
-        any |= SafeCopy(cur.data() + off / 4, (const void*)(object + off), 0x100);
-    if (!any)
-        return;
-    if (object != base || last.size() != cur.size()) {
-        last = settled = cur;
-        stable.assign(cur.size(), 0);
-        base = object;
-        Log("songs: watching the song select object at %llX (0x%zX bytes)", (unsigned long long)object, Size);
-        return;
-    }
-    static DWORD windowStart = 0;
-    static int lines = 0;
-    DWORD now = GetTickCount();
-    if (now - windowStart > 1000)
-        windowStart = now, lines = 0;
-    // The buttons just tapped, by the game's numbers (3 UP, 4 DOWN, 5 LEFT, 6 RIGHT, 8 SQUARE, 11 L = Q, 12 R = E ...),
-    // so each settled change below can be matched to the key that caused it.
-    if (const void* input = pause::InputObject()) {
-        uint8_t tapped[16] = {};
-        static uint8_t lastTapped[16] = {};
-        if (SafeCopy(tapped, input, sizeof(tapped)) && memcmp(tapped, lastTapped, sizeof(tapped)) != 0) {
-            std::string pressed;
-            for (int b = 0; b < 128; b++)
-                if ((tapped[b / 8] & (1 << (b % 8))) && !(lastTapped[b / 8] & (1 << (b % 8))))
-                    pressed += " " + std::to_string(b);
-            if (!pressed.empty())
-                Log("songs: ---- buttons tapped:%s", pressed.c_str());
-            memcpy(lastTapped, tapped, sizeof(tapped));
-        }
-    }
-    for (size_t i = 0; i < cur.size(); i++) {
-        if (cur[i] != last[i]) {
-            last[i] = cur[i];
-            stable[i] = 0;
-        } else if (stable[i] < 255 && ++stable[i] == 5 && cur[i] != settled[i]) {
-            bool small = cur[i] >= 0 && cur[i] <= 15 && settled[i] >= 0 && settled[i] <= 15;
-            if (small && lines++ < 100)
-                Log("songs: object +0x%05zX settled: %d -> %d", i * 4, settled[i], cur[i]);
-            settled[i] = cur[i];
-        }
-    }
-}
-
-static void WatchSongSelect()
-{
-    static std::vector<int32_t> listPrev, recordPrev, stagePrev;
-    static uintptr_t listBase = 0, recordBase = 0, stageBase = 0;
-    static int32_t lastPv = -2;
-    if (!launch::InSongSelect())
-        return;
-    int32_t pv = s_highlighted;
-    if (pv != lastPv) {
-        lastPv = pv;
-        Log("songs: highlight is now pv %d (charts: easy %d normal %d hard %d extreme %d extra %d)", pv,
-            (int)Has(pv, 0, 0), (int)Has(pv, 1, 0), (int)Has(pv, 2, 0), (int)Has(pv, 3, 0), (int)Has(pv, 3, 1));
-    }
-    // The highlighted pv is the int16 at list+0xA88: state next to it is the likely home of the selected difficulty.
-    WatchRegion("list", s_listObject, 0x1800, 0xA00, 0xB00, listPrev, listBase);
-    WatchRegion("record", 0x141750890, 0x600, 0, 0x100, recordPrev, recordBase);
-    // The stage data header: its first int equalled the difficulty at every confirm (2.3.8 diffhunt). If it also moves
-    // while left/right change the difficulty, it can be read live.
-    WatchRegion("stage", md::addr::StageData, 0x40, 0, 0x40, stagePrev, stageBase);
-}
-
 void Tick()
 {
-    if (s_listWatch)
-        WatchSongSelect();
-    if (s_objectWatch)
-        WatchSelectObject();
-    if (s_highlightWatch && !launch::InSongSelect()) {
-        s_highlightWatch = false;
-        watch::Stop(); // the list object is gone: its address now belongs to something else
-    }
     // Threads created after Install have no breakpoint: on song select without a highlight seen yet,
     // arm again every 2 s.
     static DWORD lastArm = 0;

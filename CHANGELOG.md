@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.16 (02.11.2026)
+- Removed the unfinished research tools: the Ghidra export (game image dump, `tools/re/ghidra/`), the stream player
+  dump and file name watch, the audio file open trace, the difficulty write hunt, the song select/highlight watches
+  and the button log. The findings stay in `docs/re-notes.md`.
+
 ## 2.4.15 (02.11.2026)
 - Research: "Dump game image to file for Ghidra" writes the game's decrypted code and data to your PC, and
   `tools/re/ghidra/` turns a list of addresses into decompiled C, caller lists and disassembly (see `docs/ghidra.md`).
