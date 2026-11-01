@@ -390,6 +390,57 @@ void SetListWatch(bool on)
         Log("songs: song select watch %s", on ? "on" : "off");
 }
 
+static std::atomic<bool> s_objectWatch{false};
+
+void SetSelectObjectWatch(bool on)
+{
+    if (s_objectWatch.exchange(on) != on)
+        Log("songs: song select object watch %s", on ? "on" : "off");
+}
+
+// The song select object: the list (s_listObject) is a member of it at +0x3380 (the writer of the highlighted song had
+// rcx = list and rdi = this object). Its song-to-start copy is at +0x262A4, so 0x26400 bytes cover what we know of it.
+static void WatchSelectObject()
+{
+    constexpr size_t ListOffset = 0x3380, Size = 0x26400;
+    static std::vector<int32_t> last, settled;
+    static std::vector<uint8_t> stable;
+    static uintptr_t base = 0;
+    uintptr_t list = s_listObject;
+    if (!list || !launch::InSongSelect())
+        return;
+    uintptr_t object = list - ListOffset;
+    std::vector<int32_t> cur(Size / 4, 0x7FFFFFFF);
+    bool any = false;
+    for (size_t off = 0; off < Size; off += 0x100)
+        any |= SafeCopy(cur.data() + off / 4, (const void*)(object + off), 0x100);
+    if (!any)
+        return;
+    if (object != base || last.size() != cur.size()) {
+        last = settled = cur;
+        stable.assign(cur.size(), 0);
+        base = object;
+        Log("songs: watching the song select object at %llX (0x%zX bytes)", (unsigned long long)object, Size);
+        return;
+    }
+    static DWORD windowStart = 0;
+    static int lines = 0;
+    DWORD now = GetTickCount();
+    if (now - windowStart > 1000)
+        windowStart = now, lines = 0;
+    for (size_t i = 0; i < cur.size(); i++) {
+        if (cur[i] != last[i]) {
+            last[i] = cur[i];
+            stable[i] = 0;
+        } else if (stable[i] < 255 && ++stable[i] == 5 && cur[i] != settled[i]) {
+            bool small = cur[i] >= 0 && cur[i] <= 9 && settled[i] >= 0 && settled[i] <= 9;
+            if (small && lines++ < 100)
+                Log("songs: object +0x%05zX settled: %d -> %d", i * 4, settled[i], cur[i]);
+            settled[i] = cur[i];
+        }
+    }
+}
+
 static void WatchSongSelect()
 {
     static std::vector<int32_t> listPrev, recordPrev, stagePrev;
@@ -415,6 +466,8 @@ void Tick()
 {
     if (s_listWatch)
         WatchSongSelect();
+    if (s_objectWatch)
+        WatchSelectObject();
     if (s_highlightWatch && !launch::InSongSelect()) {
         s_highlightWatch = false;
         watch::Stop(); // the list object is gone: its address now belongs to something else

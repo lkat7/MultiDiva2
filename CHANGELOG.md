@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.9 (02.11.2026)
+- Research: "Watch the song select object" logs small values that settle in the whole song select object, to find the
+  character tab and the sort mode (sort cycles Star, Singer, Score, Name).
+
 ## 2.4.8 (02.11.2026)
 - Research: the song select watch logs small numbers up to 9 (was 4), to find the active character tab and sort mode.
 

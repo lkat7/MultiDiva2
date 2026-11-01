@@ -35,6 +35,11 @@ int32_t Bpm(int32_t pv);
 // The song list object seen by the highlight hook (0 before the first highlight). Research.
 uintptr_t ListObject();
 
+// Research: while on, watches the whole song select object (the list object is a member of it, 0x3380 in) and logs
+// every int32 that settles on a new small value (0..9) for 5 frames, i.e. a tab, a sort mode or a difficulty, but not
+// animation counters. Press T, Q and E in song select with it on.
+void SetSelectObjectWatch(bool on);
+
 // Research: write watch on the song list's highlighted song (list +0xA88). Stops itself when song select closes,
 // because the list object's memory is reused afterwards.
 bool StartHighlightWatch();

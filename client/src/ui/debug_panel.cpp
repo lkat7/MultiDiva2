@@ -326,6 +326,11 @@ static void DrawLaunchOverride()
             songs::SetListWatch(watchSelect);
             pause::SetButtonLog(watchSelect); // button taps in the same log, to line up with what changes
         }
+        // The tab (Q/E), the sort (T) and the difficulty live in the song select object: with this on, press T four times
+        // (a second apart), then E through every tab and Q back, then send the log.
+        static bool watchObject = false;
+        if (ImGui::Checkbox("Watch the song select object: tab and sort (research)", &watchObject))
+            songs::SetSelectObjectWatch(watchObject);
         // The player profile: type the in-game profile name, then find it in memory (UTF-8 and UTF-16 hits are logged).
         static char profileName[64] = "";
         ImGui::SetNextItemWidth(220);
