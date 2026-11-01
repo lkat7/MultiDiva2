@@ -283,3 +283,6 @@ song entry's first fields already match this document (name `+0x08`, second stri
 - `PlayerData` (`player_data.hpp`): `player_name`, `level`, `level_name`, module equips, via `player_data_array_get`.
 - `pv_game_data`: `life_gauge`, `life_gauge_border`, `hit_count[5]`, `chance_point`, `no_fail`, `no_clear`, ...
 Debug panel (Ctrl+F8, research=1) buttons log what is needed to confirm each one.
+
+Confirmed in game (2.3.1 log): pv_db chart level at chart `+0x40` in half stars (pv 96: raw 6/8/10/14 = 3.0/4.0/5.0/7.0,
+EX chart raw 16 = 8.0) and song entry BPM at entry `+0x4C` (pv 96 = 183).

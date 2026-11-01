@@ -7,6 +7,7 @@
 #include <cstring>
 #include <map>
 #include <string>
+#include <vector>
 #include <windows.h>
 #include <tlhelp32.h>
 
@@ -35,6 +36,8 @@ using PvEntryFn = void**(__fastcall*)(void* db, int32_t pv);
 using PvChartFn = void*(__fastcall*)(void* entry, int32_t difficulty, int32_t edition);
 
 static std::atomic<int32_t> s_highlighted{-1};
+static std::atomic<uintptr_t> s_listObject{0}; // the song list object seen by the highlight hook (rcx)
+static std::atomic<bool> s_listWatch{false};
 
 template <size_t N> static bool CodeIs(uintptr_t address, const uint8_t (&bytes)[N])
 {
@@ -72,6 +75,7 @@ static LONG CALLBACK OnBreakpoint(EXCEPTION_POINTERS* info)
     int16_t pv = -1;
     if (SafeRead(ctx->Rcx + addr::HighlightPv, pv))
         s_highlighted = pv;
+    s_listObject = ctx->Rcx;
     ctx->Dr6 &= ~2ull;
     ctx->EFlags |= 0x10000; // RF: run the instruction without breaking on it again
     return EXCEPTION_CONTINUE_EXECUTION;
@@ -170,14 +174,16 @@ float Level(int32_t pv, int32_t difficulty, int32_t edition)
     if (CodeOk() && pv >= 0 && difficulty >= 0 && Has(pv, difficulty, edition)) {
         void* chart = Chart(Entry(pv), difficulty, edition);
         read = chart && SafeRead((uintptr_t)chart + ChartLevel, half);
-        if (read && half >= 2 && half <= 20)
+        if (read && half >= 1 && half <= 20)
             stars = half / 2.0f;
     }
     // The layout is from the Arcade game's decompilation: the first lookups go to the normal log so a player's log
     // shows whether it holds on this version.
-    static int logged = 0;
-    if (logged < 12 && Has(pv, difficulty, edition)) {
+    static int logged = 0, loggedRejected = 0;
+    if (Has(pv, difficulty, edition) && (logged < 12 || (stars <= 0 && loggedRejected < 12))) {
         logged++;
+        if (stars <= 0)
+            loggedRejected++;
         Log("songs: level of pv %d diff %d edition %d: %s (raw %d at chart+0x%zX) -> %s", pv, difficulty, edition,
             read ? "read" : "unreadable", half, ChartLevel, stars > 0 ? "accepted" : "rejected, not shown");
     }
@@ -287,8 +293,55 @@ void Install()
     Log("songs: highlight breakpoint set on %lu thread(s)", Arm());
 }
 
+// One region of the research watch: int32s that flip between two values 0..4 are logged with their offset.
+static void WatchRegion(const char* name, uintptr_t base, size_t size, std::vector<int32_t>& prev, uintptr_t& prevBase)
+{
+    std::vector<int32_t> cur(size / 4, 0x7FFFFFFF);
+    if (!base)
+        return;
+    bool any = false;
+    for (size_t off = 0; off < size; off += 0x100) // chunks: the object may be shorter than the span, or have holes
+        any |= SafeCopy(cur.data() + off / 4, (const void*)(base + off), 0x100);
+    if (!any)
+        return;
+    if (prevBase != base || prev.size() != cur.size()) {
+        prev = cur;
+        prevBase = base;
+        Log("songs: watching %s at %llX (%zu bytes)", name, (unsigned long long)base, size);
+        return;
+    }
+    for (size_t i = 0; i < cur.size(); i++)
+        if (cur[i] != prev[i] && cur[i] >= 0 && cur[i] <= 4 && prev[i] >= 0 && prev[i] <= 4)
+            Log("songs: %s +0x%03zX: %d -> %d", name, i * 4, prev[i], cur[i]);
+    prev = std::move(cur);
+}
+
+void SetListWatch(bool on)
+{
+    if (s_listWatch.exchange(on) != on)
+        Log("songs: song select watch %s", on ? "on" : "off");
+}
+
+static void WatchSongSelect()
+{
+    static std::vector<int32_t> listPrev, recordPrev;
+    static uintptr_t listBase = 0, recordBase = 0;
+    static int32_t lastPv = -2;
+    if (!launch::InSongSelect())
+        return;
+    int32_t pv = s_highlighted;
+    if (pv != lastPv) {
+        lastPv = pv;
+        Log("songs: highlight is now pv %d", pv);
+    }
+    WatchRegion("list", s_listObject, 0x1800, listPrev, listBase);
+    WatchRegion("record", 0x141750890, 0x600, recordPrev, recordBase);
+}
+
 void Tick()
 {
+    if (s_listWatch)
+        WatchSongSelect();
     // Threads created after Install have no breakpoint: on song select without a highlight seen yet,
     // arm again every 2 s.
     static DWORD lastArm = 0;

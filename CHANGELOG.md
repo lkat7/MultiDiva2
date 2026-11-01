@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.3.2 (02.11.2026)
+- Level and BPM are confirmed to read correctly on Mega Mix+ (chart `+0x40`, in half stars; song entry `+0x4C`). A
+  level of 0.5 stars is now accepted, and every rejected level is logged.
+- Research (Ctrl+F8, `research=1`): "Watch song select for the difficulty" logs which values change when you change
+  difficulty in song select, to find where the game keeps the host's selected difficulty so everyone can see it.
+
 ## 2.3.1 (02.11.2026)
 - While the host is only highlighting a song, the room now lists the charts that song has (Easy, Normal, Hard, Extreme,
   Extra), each in its difficulty's colour, with the level in stars and the BPM when the game's database gives them. A
