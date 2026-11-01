@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.3.3 (02.11.2026)
+- Research: the song select watch (Ctrl+F8, `research=1`) now also logs every change next to the highlighted song's
+  field and in the selection record, and turns the button log on with it, so one run (press left/right/up/down a few
+  times) shows where the game keeps the selected difficulty. Nothing changes for players.
+
 ## 2.3.2 (02.11.2026)
 - Level and BPM are confirmed to read correctly on Mega Mix+ (chart `+0x40`, in half stars; song entry `+0x4C`). A
   level of 0.5 stars is now accepted, and every rejected level is logged.

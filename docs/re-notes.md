@@ -284,5 +284,10 @@ song entry's first fields already match this document (name `+0x08`, second stri
 - `pv_game_data`: `life_gauge`, `life_gauge_border`, `hit_count[5]`, `chance_point`, `no_fail`, `no_clear`, ...
 Debug panel (Ctrl+F8, research=1) buttons log what is needed to confirm each one.
 
+Song select input (2.3.1 log, button log on): `button_tapped` button 5 is checked from `0x1406F030F` and button 6 from
+`0x1406F02F1`, in the same function next to the highlight thunk (ReDIVA `InputButton` order: UP 3, DOWN 4, LEFT 5,
+RIGHT 6), so they are the left/right handlers that change the selection. Chart struct: `+0x00` difficulty, `+0x04`
+edition, `+0x40` level (half stars), `+0x44` level sort index.
+
 Confirmed in game (2.3.1 log): pv_db chart level at chart `+0x40` in half stars (pv 96: raw 6/8/10/14 = 3.0/4.0/5.0/7.0,
 EX chart raw 16 = 8.0) and song entry BPM at entry `+0x4C` (pv 96 = 183).

@@ -283,8 +283,10 @@ static void DrawLaunchOverride()
         // Where song select keeps the selected difficulty: turn this on in song select and press left/right on the
         // difficulty a few times (also change song once), then send the log.
         static bool watchSelect = false;
-        if (ImGui::Checkbox("Watch song select for the difficulty (research)", &watchSelect))
+        if (ImGui::Checkbox("Watch song select for the difficulty (research)", &watchSelect)) {
             songs::SetListWatch(watchSelect);
+            pause::SetButtonLog(watchSelect); // button taps in the same log, to line up with what changes
+        }
         // The player profile: type the in-game profile name, then find it in memory (UTF-8 and UTF-16 hits are logged).
         static char profileName[64] = "";
         ImGui::SetNextItemWidth(220);

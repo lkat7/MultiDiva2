@@ -293,8 +293,10 @@ void Install()
     Log("songs: highlight breakpoint set on %lu thread(s)", Arm());
 }
 
-// One region of the research watch: int32s that flip between two values 0..4 are logged with their offset.
-static void WatchRegion(const char* name, uintptr_t base, size_t size, std::vector<int32_t>& prev, uintptr_t& prevBase)
+// One region of the research watch: int32s that flip between two values 0..4 are logged with their offset, and every
+// change inside [allFrom, allTo) is logged whatever its value (the field may be a byte, a short or a bigger enum).
+static void WatchRegion(const char* name, uintptr_t base, size_t size, size_t allFrom, size_t allTo,
+    std::vector<int32_t>& prev, uintptr_t& prevBase)
 {
     std::vector<int32_t> cur(size / 4, 0x7FFFFFFF);
     if (!base)
@@ -310,9 +312,20 @@ static void WatchRegion(const char* name, uintptr_t base, size_t size, std::vect
         Log("songs: watching %s at %llX (%zu bytes)", name, (unsigned long long)base, size);
         return;
     }
-    for (size_t i = 0; i < cur.size(); i++)
-        if (cur[i] != prev[i] && cur[i] >= 0 && cur[i] <= 4 && prev[i] >= 0 && prev[i] <= 4)
-            Log("songs: %s +0x%03zX: %d -> %d", name, i * 4, prev[i], cur[i]);
+    static DWORD windowStart = 0;
+    static int lines = 0;
+    DWORD now = GetTickCount();
+    if (now - windowStart > 1000)
+        windowStart = now, lines = 0;
+    for (size_t i = 0; i < cur.size(); i++) {
+        if (cur[i] == prev[i] || cur[i] == 0x7FFFFFFF || prev[i] == 0x7FFFFFFF)
+            continue;
+        bool small = cur[i] >= 0 && cur[i] <= 4 && prev[i] >= 0 && prev[i] <= 4;
+        bool near = i * 4 >= allFrom && i * 4 < allTo;
+        if ((small || near) && lines++ < 200) // at most 200 lines a second: animation counters can be noisy
+            Log("songs: %s +0x%03zX: %d -> %d (0x%X -> 0x%X)%s", name, i * 4, prev[i], cur[i], (unsigned)prev[i],
+                (unsigned)cur[i], small ? " *" : "");
+    }
     prev = std::move(cur);
 }
 
@@ -334,8 +347,9 @@ static void WatchSongSelect()
         lastPv = pv;
         Log("songs: highlight is now pv %d", pv);
     }
-    WatchRegion("list", s_listObject, 0x1800, listPrev, listBase);
-    WatchRegion("record", 0x141750890, 0x600, recordPrev, recordBase);
+    // The highlighted pv is the int16 at list+0xA88: state next to it is the likely home of the selected difficulty.
+    WatchRegion("list", s_listObject, 0x1800, 0xA00, 0xB00, listPrev, listBase);
+    WatchRegion("record", 0x141750890, 0x600, 0, 0x100, recordPrev, recordBase);
 }
 
 void Tick()
