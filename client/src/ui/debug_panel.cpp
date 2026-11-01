@@ -245,6 +245,15 @@ static void DrawLaunchOverride()
                 Log("watch: no song list object yet, open song select first");
             }
         }
+        // Does calling the game's set-highlight function move the list? Open song select, type another song's id (the
+        // F8 window / log show ids) and press the button: say whether the cursor scrolled to it, only the jacket/title
+        // changed, or nothing; the log has the value before and after.
+        static int testPv = 50;
+        ImGui::SetNextItemWidth(100);
+        ImGui::InputInt("Test pv", &testPv, 0);
+        ImGui::SameLine();
+        if (ImGui::Button("Call set-highlight (research)"))
+            songs::SetHighlightTest(testPv);
         // Song select's per-performer outfit selection for the highlighted song (0x141750890 + 0x1C0).
         if (ImGui::Button("Watch outfit selection (research)"))
             watch::Start(0x141750A50, 40);

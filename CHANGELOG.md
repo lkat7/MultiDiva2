@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.6 (02.11.2026)
+- Research: the write watch dumps the code around every caller on the stack (once each), and a new "Call set-highlight"
+  button calls the game's function that sets song select's highlighted song, to see whether it scrolls the list.
+
 ## 2.4.5 (02.11.2026)
 - Research: "Watch highlight write" (Ctrl+F8, `research=1`) logs every write to the song list's highlighted song, with
   the code around it and the call chain, to find the function that moves song select's cursor. The write watch also

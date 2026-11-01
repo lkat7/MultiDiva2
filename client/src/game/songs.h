@@ -35,6 +35,10 @@ int32_t Bpm(int32_t pv);
 // The song list object seen by the highlight hook (0 before the first highlight). Research.
 uintptr_t ListObject();
 
+// Research: calls the game's "set the highlighted song" function (list +0xA88, 0x1406DE9F0) with this song, from song
+// select. Logs what it did. The function guards itself (it does nothing while the list is busy). Game thread.
+bool SetHighlightTest(int32_t pv);
+
 // Research: while on, every frame in song select, logs each int32 in the song list object (the highlight hook's rcx)
 // and in song select's selection record that changes between two values 0..4 (difficulty / edition look like that),
 // plus every highlight change. Change the difficulty in song select a few times, then read the log: the offset that

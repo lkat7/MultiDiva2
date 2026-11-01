@@ -43,9 +43,11 @@ static LONG CALLBACK OnException(EXCEPTION_POINTERS* info)
         char stack[512];
         int len = 0;
         int found = 0;
+        uintptr_t returns[10] = {};
         __try {
             for (uintptr_t* p = (uintptr_t*)ctx->Rsp; found < 10 && p < (uintptr_t*)ctx->Rsp + 0x200; p++) {
                 if (InGameCode(*p)) {
+                    returns[found] = *p;
                     len += wsprintfA(stack + len, " %08X%08X", (DWORD)(*p >> 32), (DWORD)*p); // wsprintf has no %llX
                     found++;
                 }
@@ -57,6 +59,35 @@ static LONG CALLBACK OnException(EXCEPTION_POINTERS* info)
             (unsigned long long)ctx->Rip, stack);
         if (s_callback)
             s_callback(ctx, value);
+        // The code around each return address seen for the first time (the call sites up the stack), so the callers
+        // can be read: 192 bytes before the return address and 16 after, 64 bytes a line.
+        static uintptr_t seen[96];
+        static int seenCount = 0;
+        for (int i = 0; i < found; i++) {
+            bool known = false;
+            for (int k = 0; k < seenCount; k++)
+                known |= seen[k] == returns[i];
+            if (known || seenCount >= 96)
+                continue;
+            seen[seenCount++] = returns[i];
+            uint8_t window[208] = {};
+            bool readable = true;
+            __try {
+                memcpy(window, (const void*)(returns[i] - 192), sizeof(window));
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                readable = false;
+            }
+            if (!readable)
+                continue;
+            for (size_t row = 0; row < sizeof(window); row += 64) {
+                size_t n = sizeof(window) - row < 64 ? sizeof(window) - row : 64;
+                char hex[64 * 2 + 1];
+                for (size_t b = 0; b < n; b++)
+                    wsprintfA(hex + b * 2, "%02X", window[row + b]);
+                Log("watch: caller %llX code from %llX: %s", (unsigned long long)returns[i],
+                    (unsigned long long)(returns[i] - 192 + row), hex);
+            }
+        }
         // The registers and the code just before Rip, to read where the written value came from (a load from some
         // object's field: the base register's value gives that object's address).
         auto q = [](DWORD64 v) { return (unsigned long long)v; };

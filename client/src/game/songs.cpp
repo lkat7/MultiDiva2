@@ -347,6 +347,26 @@ static void WatchRegion(const char* name, uintptr_t base, size_t size, size_t al
 
 uintptr_t ListObject() { return s_listObject; }
 
+bool SetHighlightTest(int32_t pv)
+{
+    // 0x1406DE9F0(list, pv): push rbx; sub rsp,60h; mov rax,[rip+...] (stack cookie). Its writes to list+0xA88 were
+    // caught with the write watch; it looks the song up and refreshes the list's dependent state.
+    constexpr uintptr_t SetHighlight = 0x1406DE9F0;
+    static const uint8_t bytes[] = { 0x40, 0x53, 0x48, 0x83, 0xEC, 0x60, 0x48, 0x8B, 0x05 };
+    uintptr_t list = s_listObject;
+    if (!launch::InSongSelect() || !list || !CodeIs(SetHighlight, bytes) || pv < 0 || !Has(pv)) {
+        Log("songs: SetHighlight(%d) not called (not in song select, no list yet, code differs, or song not installed)", pv);
+        return false;
+    }
+    int32_t before = -1;
+    SafeRead(list + 0xA88, before);
+    ((void(__fastcall*)(void*, int32_t))SetHighlight)((void*)list, pv);
+    int32_t after = -1;
+    SafeRead(list + 0xA88, after);
+    Log("songs: SetHighlight(list %llX, pv %d): +0xA88 was %d, now %d", (unsigned long long)list, pv, before, after);
+    return true;
+}
+
 void SetListWatch(bool on)
 {
     if (s_listWatch.exchange(on) != on)

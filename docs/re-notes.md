@@ -322,5 +322,13 @@ field at `pvsel+0x262A4` (the song to start) follows the highlight live and hold
 `pvsel+0x262C8/0x262CC` do NOT follow left/right while browsing (the live difficulty is in the stage data). The list's
 `+0xA88` shows the real song id in random mode too.
 
+Highlight setter (2.4.5 watch log, disassembled with capstone): `0x1406DE9F0(list, pv)`: `push rbx; sub rsp,60h`, calls
+`0x1402B8080` (returns al: if non-zero it returns without doing anything), returns if `byte [list+0xA91]` is set, then
+`mov [list+0xA88], edx` (the write), looks the song up (`0x140580490` db, `0x140581F50` entry) and stores `0x1404BCCC0(entry)` at
+`list+0x600`, then calls `0x1406DF720(list)` and `0x1406DF970(&local, list, [list+0x600])`. Two kinds of callers per
+cursor step: `1401EAE3E` (called from `1406F4370` <- `1406EFE48` <- `1406F79D0` <- `1401DEFF9`) and `1406E1157` (from
+`14032F500` <- `1409777EF` <- `140165A2D` <- `1406E2F41` <- `1406E1ADD`); Random landings come only through `1406E1157`
+(from `1401DA834` <- `1406F0262` <- `1401DEFF9`), one write per second while it spins.
+
 Confirmed in game (2.3.1 log): pv_db chart level at chart `+0x40` in half stars (pv 96: raw 6/8/10/14 = 3.0/4.0/5.0/7.0,
 EX chart raw 16 = 8.0) and song entry BPM at entry `+0x4C` (pv 96 = 183).
