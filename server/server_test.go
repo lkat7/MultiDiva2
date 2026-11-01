@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -853,5 +854,56 @@ func TestNonResumableDropRemovedAtOnce(t *testing.T) {
 	r = back.expectRoom(func(r RoomMsg) bool { return len(r.Players) == 2 })
 	if r.Players[1].Name != "Old" {
 		t.Fatalf("room = %+v", r)
+	}
+}
+
+func TestFormatRound(t *testing.T) {
+	rec := RoundRecord{
+		Time: time.Date(2026, 11, 1, 14, 3, 22, 0, time.UTC), Room: "miku",
+		Pick: PickMsg{PV: 54, Difficulty: 2, Title: "Roshin Yukai"},
+		Results: []FinalResult{
+			{Name: "Alice", Place: 1, Result: Result{Score: Score{Score: 400000, Cool: 100, Completion: 100}, Grade: 4, MaxCombo: 150}},
+			{Name: "Bob", Place: 2, Result: Result{Score: Score{Score: 210000, Worst: 9, Completion: 43.2}, Failed: true}},
+		},
+	}
+	got := formatRound(rec)
+	for _, want := range []string{`2026-11-01 14:03:22 | room "miku" | Roshin Yukai (Hard) | pv=54`, "#1 Alice", "Excellent", "#2 Bob", "FAILED", "43.2%"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("log entry lacks %q:\n%s", want, got)
+		}
+	}
+	if strings.Index(got, "Alice") > strings.Index(got, "Bob") {
+		t.Errorf("ranking out of order:\n%s", got)
+	}
+}
+
+// A finished round, with a failed player, ends up in the play log file.
+func TestPlayLogWritten(t *testing.T) {
+	path := t.TempDir() + "/plays.txt"
+	url, hub := startServerHub(t)
+	hub.plays = newPlayLog(path)
+
+	host := connect(t, url, "Host")
+	guest := connect(t, url, "Guest")
+	joinInOrder(host, guest, "r")
+	guest.send("ready", ReadyMsg{Ready: true})
+	host.expectRoom(func(r RoomMsg) bool { return r.Players[1].Ready })
+	host.send("start", validPick(54))
+	host.expect("start", nil)
+	host.send("finish", FinishMsg{Result: Result{Score: Score{Score: 5000}, Grade: 3, MaxCombo: 20}})
+	guest.send("finish", FinishMsg{Result: Result{Score: Score{Score: 100}, Failed: true}})
+	var res ResultsMsg
+	host.expect("results", &res)
+	hub.plays.Close()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	for _, want := range []string{`room "r"`, "Roshin Yukai", "#1 Host", "Great", "#2 Guest", "FAILED"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("play log lacks %q:\n%s", want, got)
+		}
 	}
 }

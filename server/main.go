@@ -13,10 +13,14 @@ func main() {
 	addr := flag.String("addr", ":3939", "listen address")
 	tick := flag.Duration("tick", 100*time.Millisecond, "live score broadcast interval")
 	loadTimeout := flag.Duration("load-timeout", 30*time.Second, "max wait on the loading screen for slow players")
+	playLog := flag.String("play-log", "multidiva-plays.txt", "append every finished round and its ranking to this text file (empty: off)")
 	flag.Parse()
 
+	hub := NewHub(*tick, *loadTimeout)
+	hub.plays = newPlayLog(*playLog)
+
 	log.Printf("MultiDiva server %s (protocol v%d) listening on %s", ServerVersion, ProtocolVersion, *addr)
-	log.Fatal(http.ListenAndServe(*addr, httpHandler(NewHub(*tick, *loadTimeout))))
+	log.Fatal(http.ListenAndServe(*addr, httpHandler(hub)))
 }
 
 func httpHandler(hub *Hub) http.Handler {

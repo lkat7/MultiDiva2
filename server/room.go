@@ -600,6 +600,9 @@ func (r *Room) checkRoundOver() {
 		m.playing, m.finished = false, false
 	}
 	log.Printf("room %q: round over", r.name)
+	if r.pick != nil {
+		r.hub.plays.Add(RoundRecord{Time: time.Now(), Room: r.name, Pick: *r.pick, Results: append([]FinalResult(nil), results...)})
+	}
 	r.broadcast(encode("results", ResultsMsg{Players: results}))
 	r.broadcastState()
 }

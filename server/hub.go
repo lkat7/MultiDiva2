@@ -26,6 +26,8 @@ type Hub struct {
 	probeEvery  time.Duration // WebSocket ping interval, and how long a pong may take
 	probeWait   time.Duration
 	sessions    map[string]*Client
+
+	plays *PlayLog // finished rounds appended to a text file; nil = off
 }
 
 func NewHub(tickEvery, loadTimeout time.Duration) *Hub {
