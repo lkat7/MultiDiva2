@@ -4,6 +4,7 @@
 #include "game_sprites.h"
 #include "../core/config.h"
 #include "../core/log.h"
+#include "../core/version.h"
 #include "../game/launch.h"
 #include "../game/memory.h"
 #include "../game/memscan.h"
@@ -340,7 +341,7 @@ void DrawDebugPanel(bool* open)
 {
     ImGui::SetNextWindowSize(ImVec2(520, 640), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(40, 40), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("MultiDiva2 debug (Ctrl+F8)", open)) {
+    if (!ImGui::Begin("MultiDiva2 debug v" MULTIDIVA_VERSION " (Ctrl+F8)###md_debug", open)) {
         ImGui::End();
         return;
     }
