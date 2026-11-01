@@ -1,158 +1,34 @@
 # Changelog
 
-## 2.4.17 (02.11.2026)
-- Room window: the highlighted song's title is white, its BPM is greyer, and "Last song" is one line ("Title (Hard)")
-  without the extra level and BPM line.
-
-## 2.4.16 (02.11.2026)
-- Removed the unfinished research tools: the Ghidra export (game image dump, `tools/re/ghidra/`), the stream player
-  dump and file name watch, the audio file open trace, the difficulty write hunt, the song select/highlight watches
-  and the button log. The findings stay in `docs/re-notes.md`.
-
-## 2.4.15 (02.11.2026)
-- Research: "Dump game image to file for Ghidra" writes the game's decrypted code and data to your PC, and
-  `tools/re/ghidra/` turns a list of addresses into decompiled C, caller lists and disassembly (see `docs/ghidra.md`).
-
-## 2.4.14 (02.11.2026)
-- Removed research code that did not work: the "Call set-highlight" test (the game overwrites the highlight from its
-  cursor), the preview player memory search (it only found the file system's mod folder caches) and the stream state
-  watch (the update loop rewrites the state every frame). The stream watch now watches the player's file name instead.
-
-## 2.4.13 (02.11.2026)
-- Research: the audio file open trace showed the game plays songs through three fixed stream players. "Dump sound
-  stream players" logs them and "Watch that player's state" logs what starts a stream, with the exact call chain.
-
-## 2.4.12 (02.11.2026)
-- Research: "Trace audio file opens" logs every open of a song audio path (with the call chain of the game functions
-  that ask for it), because searching memory for the file name only found the game's mod-folder path caches.
-
-## 2.4.11 (02.11.2026)
-- Research toward hearing the host's song: "Find preview player" searches the game's memory for the highlighted song's
-  audio file name and logs every place it is kept besides the song database; "Watch preview hit" puts the write watch
-  (with the exact call chain) on one of them, so moving the highlight reveals the code that starts the preview.
-
-## 2.4.10 (02.11.2026)
-- Research: the song select object watch logs the buttons you tap next to the fields that change, and logs values up to
-  15 (a tab index can reach 10). From the 2.4.9 log: sort mode is `object +0x17DFC` (Star 6, Singer 1, Score 2, Name 0),
-  with a 0..3 step counter at `+0x17E0C` / `+0x262C0`; the selected difficulty is `+0x262C8`.
-
-## 2.4.9 (02.11.2026)
-- Research: "Watch the song select object" logs small values that settle in the whole song select object, to find the
-  character tab and the sort mode (sort cycles Star, Singer, Score, Name).
-
-## 2.4.8 (02.11.2026)
-- Research: the song select watch logs small numbers up to 9 (was 4), to find the active character tab and sort mode.
-
-## 2.4.7 (02.11.2026)
-- Research: the write watch walks the stack with Windows' unwind tables, so it logs the exact call chain with each
-  function's start address, and dumps the first 128 bytes of every function it meets. The highlight watch stops by itself
-  when song select closes.
-
-## 2.4.6 (02.11.2026)
-- Research: the write watch dumps the code around every caller on the stack (once each), and a new "Call set-highlight"
-  button calls the game's function that sets song select's highlighted song, to see whether it scrolls the list.
-
-## 2.4.5 (02.11.2026)
-- Research: "Watch highlight write" (Ctrl+F8, `research=1`) logs every write to the song list's highlighted song, with
-  the code around it and the call chain, to find the function that moves song select's cursor. The write watch also
-  logs the 64 bytes after each write now.
-
-## 2.4.4 (02.11.2026)
-- Add/Remove Miku Bot moved into the options section of the F8 window; the cover there is half the size.
-- Covers of mod songs: a song whose jacket sprite isn't named like the game's own now falls back to any `SONG_JK...`
-  sprite in its set, and `multidiva.log` says why when a cover can't be shown (`jackets:` lines).
-
-## 2.4.3 (02.11.2026)
-- The F8 window shows the cover (the game's own jacket) of the host's highlighted song, and of the last song played,
-  next to its lines. The full-screen room already did.
-
-## 2.4.2 (02.11.2026)
-- Charts a song doesn't really have are no longer listed. The game keeps an empty placeholder in those slots (level 0,
-  greyed out in song select) and the song check counted it as present, so Easy showed up for songs without one.
-
-## 2.4.1 (02.11.2026)
-- In the chart row only the host's selected chart keeps its colour, the others are grey (all stay coloured while the
-  selection is unknown, e.g. with an older host). The F8 window has a divider between the room status and the options.
-
-## 2.4.0 (02.11.2026)
-- While the host browses song select, everyone now sees which chart the host has selected with left/right: the chart row
-  marks it with a tinted tab (brackets in the F8 window) and the plate's difficulty chip follows it. The host's client
-  reads it from the game's stage data and sends it with the highlighted song (`hover` gains optional `difficulty` and
-  `edition`; older clients and servers keep working and simply don't show it).
-
-## 2.3.11 (02.11.2026)
-- Fixes the crash of the song select watch in 2.3.9 and 2.3.10: the new 0x40 byte stage data scan copied 0x100 bytes
-  into its 0x40 byte buffer (a buffer overrun in my code). The earlier guess about the selection record in 2.3.10 was
-  wrong; that scan stays at 0x600 bytes.
-
-## 2.3.10 (02.11.2026)
-- Research: the song select watch crashed the game in 2.3.9. The selection record scan is back to the 0x600 bytes
-  that worked before (2.3.8 had widened it to 0x2000, the likeliest cause), and nothing else changed in the watch.
-
-## 2.3.9 (02.11.2026)
-- Research: the difficulty hunt found stage data `+0x0` equal to the difficulty at every confirm. The song select watch
-  now logs changes to the start of the stage data, to check it follows left/right live.
-
-## 2.3.8 (02.11.2026)
-- Research: "Watch difficulty write" now also runs a hunt for the field that holds the selected difficulty: start
-  several rounds on different difficulties in any order and the `diffhunt` lines in `multidiva.log` list the fields that
-  matched every time. The song select watch scans the selection record out to 0x2000 bytes.
-
-## 2.3.7 (02.11.2026)
-- Research: "Watch difficulty write" (Ctrl+F8, `research=1`) logs the registers and the code around each write to the
-  stage entry's difficulty, to find where song select keeps the selected difficulty. The write watch logs this for every
-  watch. The tag experiment of 2.3.6 is removed (the tag was not the difficulty).
-
-## 2.3.6 (02.11.2026)
-- Research: song select's left/right tag (`p_02`..`p_04`, probably the selected difficulty) is logged when it changes
-  and next to the difficulty of every round started, to map one to the other.
-
-## 2.3.5 (02.11.2026)
-- Research: the input watch names the buttons in each change, and the song select watch lists which charts each
-  highlighted song has. The 2.3.3 log showed the arrow keys only move the song list, so the key that changes the
-  difficulty still has to be captured.
-
-## 2.3.4 (02.11.2026)
-- Fixes a build error in 2.3.3 on MSVC (`near` is a macro in `windows.h`).
-
-## 2.3.3 (02.11.2026)
-- Research: the song select watch (Ctrl+F8, `research=1`) now also logs every change next to the highlighted song's
-  field and in the selection record, and turns the button log on with it, so one run (press left/right/up/down a few
-  times) shows where the game keeps the selected difficulty. Nothing changes for players.
-
-## 2.3.2 (02.11.2026)
-- Level and BPM are confirmed to read correctly on Mega Mix+ (chart `+0x40`, in half stars; song entry `+0x4C`). A
-  level of 0.5 stars is now accepted, and every rejected level is logged.
-- Research (Ctrl+F8, `research=1`): "Watch song select for the difficulty" logs which values change when you change
-  difficulty in song select, to find where the game keeps the host's selected difficulty so everyone can see it.
-
-## 2.3.1 (02.11.2026)
-- While the host is only highlighting a song, the room now lists the charts that song has (Easy, Normal, Hard, Extreme,
-  Extra), each in its difficulty's colour, with the level in stars and the BPM when the game's database gives them. A
-  highlight has no single difficulty, so this shows all of them; the one being played shows once the round is picked.
-- The first level and BPM lookups are written to `multidiva.log` (`songs: level of pv ...`) with the raw value read, so
-  a log shows whether the layout taken from the Arcade game holds on your game version.
-
-## 2.3.0 (01.11.2026)
+## 2.2.1 (02.11.2026)
 
 ### Added
-- The picked song shows its difficulty in a colour (blue, green, orange, red, purple), with its level in stars and its
-  BPM when the game's song database gives them. These two read the game's memory using layouts taken from the Arcade
-  game's decompilation, so they appear only if the value looks sane; if they don't show on your game version, run the
-  research buttons below and send the log.
+- **Difficulty with level and colour.** The picked song shows its difficulty (Easy blue, Normal green, Hard orange,
+  Extreme red, Extra purple) with its level in stars and its BPM, read from the game's song database. They appear only
+  if the value looks sane.
+- **Live chart of the host.** While the host browses song select, everyone sees the host's highlighted song with its
+  cover (the game's own jacket, also for mod songs) and the charts it has, each with its level. The chart the host has
+  selected with left/right keeps its colour (a tinted tab in the full-screen room, brackets in the F8 window), the others
+  are grey, and the plate's difficulty chip follows it. Charts a song doesn't really have (the game's empty placeholder
+  slots) are not listed. Older clients and servers keep working and simply don't show it (`hover` gains optional
+  `difficulty` and `edition`).
 - The live leaderboard stays on screen after you fail or quit a song while the others are still playing.
-- A profile picture from a file: put `avatar.png` (or `.jpg`) next to `MultiDiva.dll` (or in
-  `%LOCALAPPDATA%\MultiDiva2`). It is shrunk to fit and shown instead of your Steam picture, so players without Steam
-  get one too.
+- **Profile picture from a file:** put `avatar.png` (or `.jpg`) next to `MultiDiva.dll` (or in
+  `%LOCALAPPDATA%\MultiDiva2`). It is shrunk to fit and shown instead of your Steam picture, so players without Steam get
+  one too.
 - A message when a non-host starts a song on their own: it plays solo and isn't part of the room's round.
-- Server: every finished round is appended to `multidiva-plays.txt` (song, difficulty, ranking with scores, grades and
+- F8 window: Add/Remove Miku Bot moved into the options section, a divider separates the room status from the options,
+  the highlighted song's title is white and its BPM greyer, and "Last song" is one line ("Title (Hard)").
+- Covers of mod songs whose jacket sprite isn't named like the game's own fall back to any `SONG_JK...` sprite in the
+  set, and `multidiva.log` says why when a cover can't be shown (`jackets:` lines).
+
+### Server
+- Every finished round is appended to `multidiva-plays.txt` (song, difficulty, ranking with scores, grades and
   judgements, failed players marked). `-play-log <file>` moves it, `-play-log ""` turns it off.
 
-### Research (Ctrl+F8 with `research=1` in the ini)
-Buttons that log what is needed to finish the next features, because the layouts aren't known on Mega Mix+: the song
-entry and chart structs (level, BPM, credits), which button check handles song select's confirm button (to stop
-non-hosts starting alone), the input state bytes (a held-button indicator on the leaderboard), and where the in-game
-profile name lives (to default your player name to it).
+### Research (Ctrl+F8 with `research=1`)
+- Findings from reverse engineering the game's song select and preview audio are kept in `docs/re-notes.md`. The
+  unfinished research tools were removed again.
 
 ## 2.2.0 (29.10.2026)
 

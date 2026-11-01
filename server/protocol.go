@@ -6,8 +6,8 @@ import "encoding/json"
 
 const (
 	ProtocolVersion = 1
-	ServerVersion   = "2.4.17" // release the server belongs to, shown in the client
-	LaunchBlockSize = 276      // stage entry [0x2C, 0x140), see docs/re-notes.md
+	ServerVersion   = "2.2.1" // release the server belongs to, shown in the client
+	LaunchBlockSize = 276     // stage entry [0x2C, 0x140), see docs/re-notes.md
 	MaxNameLen      = 24
 	MaxRoomLen      = 32
 	MaxPlayers      = 8 // per room
