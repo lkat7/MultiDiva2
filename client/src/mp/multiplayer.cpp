@@ -58,10 +58,12 @@ static void ArmBarrier()
 {
     sync::SetHoldStep(sync::BarrierStep);
     s_loadedSent = s_goReceived = false;
+    s.countdown = 0;
 }
 
 static void DisarmBarrier()
 {
+    s.countdown = 0;
     sync::Release(); // releases a held load and disarms the hold
 }
 
@@ -293,7 +295,7 @@ static void OnRoom(const json& d)
     for (const json& p : d.value("players", json::array()))
         s.players.push_back({ p.value("id", 0), p.value("name", ""), p.value("ready", false), p.value("playing", false),
             p.value("loaded", false), strtoull(p.value("steam", "").c_str(), nullptr, 10), p.value("avatar", false),
-            p.value("missing", false), p.value("away", false) });
+            p.value("missing", false), p.value("away", false), p.value("wins", 0) });
     s.pick.reset();
     if (d.contains("pick") && d["pick"].is_object()) {
         const json& p = d["pick"];
@@ -304,6 +306,7 @@ static void OnRoom(const json& d)
     s.hoverDifficulty = d.value("hoverDifficulty", -1);
     s.hoverEdition = d.value("hoverEdition", -1);
     s.focus = d.value("focus", -1);
+    s.rounds = d.value("rounds", 0);
     ReportHave();
 }
 
@@ -331,6 +334,7 @@ static void OnStart(const json& d)
         return;
     }
     s.scores.clear();
+    s.scoresAt = 0;
     s.showResults = false;
     s_finishSent = false;
     s.finishedSelf = false;
@@ -358,10 +362,12 @@ static void OnStart(const json& d)
 
 static void OnScores(const json& d)
 {
+    s.scoresAt = GetTickCount();
     s.scores.clear();
     for (const json& p : d.value("players", json::array()))
         s.scores.push_back({ p.value("id", 0), p.value("name", ""), p.value("score", 0), p.value("combo", 0),
-            p.value("completion", 0.0), p.value("finished", false), p.value("failed", false) });
+            p.value("completion", 0.0), p.value("finished", false), p.value("failed", false), p.value("loading", false),
+            p.value("lag", false) });
 }
 
 static void OnResults(const json& d)
@@ -444,7 +450,14 @@ static void Handle(const std::string& raw)
         OnScores(d);
     } else if (type == "results") {
         OnResults(d);
+    } else if (type == "countdown") {
+        // 3, 2, 1 before `go` (0.5 s apart). Only drawn and heard by players who are in the round.
+        s.countdown = d.value("n", 0);
+        s.countdownAt = GetTickCount();
+        if (s.inRound && s.countdown > 0 && GetConfig().countdownSound)
+            launch::PlayStartSound();
     } else if (type == "go") {
+        s.countdown = 0;
         s_goReceived = true;
         Log("mp: go");
     } else if (type == "kicked") {

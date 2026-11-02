@@ -29,12 +29,15 @@ type Hub struct {
 
 	spectators spectators // spectator pages listening on /spectate-ws
 
+	lagAfter  time.Duration // how long a player's score updates may stay away before the leaderboard marks them as lagging
+	countStep time.Duration // one tick of the 3-2-1 before `go` (the whole countdown is three of them)
+
 	plays *PlayLog // finished rounds appended to a text file; nil = off
 }
 
 func NewHub(tickEvery, loadTimeout time.Duration) *Hub {
 	return &Hub{rooms: map[string]*Room{}, avatars: map[int]Avatar{}, tickEvery: tickEvery, loadTimeout: loadTimeout,
-		lobby: lobby{clients: map[*Client]struct{}{}}, resumeGrace: 60 * time.Second, probeEvery: 10 * time.Second, probeWait: 10 * time.Second, sessions: map[string]*Client{}}
+		lobby: lobby{clients: map[*Client]struct{}{}}, resumeGrace: 60 * time.Second, countStep: DefaultCountStep, lagAfter: 2 * time.Second, probeEvery: 10 * time.Second, probeWait: 10 * time.Second, sessions: map[string]*Client{}}
 }
 
 func (h *Hub) grace() time.Duration {
@@ -174,3 +177,6 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	conn.Close(websocket.StatusNormalClosure, "")
 	log.Printf("client %d (%s) disconnected", c.id, c.name)
 }
+
+// DefaultCountStep is one tick of the 3-2-1 before a round is released: 0.5 s each, 1.5 s in all.
+const DefaultCountStep = 500 * time.Millisecond

@@ -10,7 +10,8 @@ struct Config {
     int port = 3939;
     std::string room = "miku";
     bool showLeaderboard = true;
-    bool showGaps = false; // score difference to you next to the other players
+    bool showGaps = true; // the other players show their score difference to you instead of their whole score
+    bool countdownSound = false; // play the game's start sound on each 3-2-1 tick before a round starts
     bool ownOutfits = true; // in a round, the performers wear my own outfits for the song, not the host's
     bool research = false;  // Ctrl+F8: show the reverse-engineering tools too ("research=1" in the ini; off for players)
 

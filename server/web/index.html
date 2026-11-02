@@ -34,6 +34,7 @@ main { max-width: 960px; margin: 0 auto; padding: 0 16px 32px; display: grid; ga
 .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag { color: var(--warn); font-size: .75rem; margin-left: 6px; }
 .tag.dim { color: var(--dim); }
+.tag.lag { color: var(--bad); }
 .bar { height: 5px; background: var(--line); border-radius: 3px; margin-top: 4px; overflow: hidden; }
 .bar i { display: block; height: 100%; background: var(--accent); transition: width .4s linear; }
 .bar i.failed { background: var(--bad); }
@@ -88,8 +89,11 @@ function playerRow(p, place) {
   const mid = el("div");
   const name = el("div", "name", p.name);
   if (p.host) name.append(el("span", "tag", "host"));
+  if (p.wins) name.append(el("span", "tag", "\u2605 " + p.wins));
   if (p.away) name.append(el("span", "tag dim", "reconnecting"));
   else if (!live && p.ready) name.append(el("span", "tag dim", "ready"));
+  if (live && p.loading) name.append(el("span", "tag dim", "loading"));
+  else if (live && p.lag && !p.finished) name.append(el("span", "tag lag", "lagging"));
   if (live && p.failed) name.append(el("span", "tag fail", "failed"));
   else if (live && p.finished) name.append(el("span", "tag dim", "finished"));
   mid.append(name);
@@ -130,6 +134,7 @@ function roomCard(r) {
   const playing = r.state === "playing";
   head.append(el("span", "badge" + (playing ? " playing" : ""), playing ? "playing" : "lobby"));
   head.append(el("span", "badge", r.players.length + (r.players.length === 1 ? " player" : " players")));
+  if (r.rounds) head.append(el("span", "badge", r.rounds + (r.rounds === 1 ? " round" : " rounds") + " played"));
   c.append(head);
   if (r.pick && (playing || !r.hover)) c.append(songLine(r.pick, playing ? "" : "Next:"));
   else if (r.hover) c.append(el("div", "song", "Host is looking at: " + r.hover));

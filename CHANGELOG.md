@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.2.1-dev.2 (02.11.2026)
+- **Session scoreboard:** the server counts the rounds each player wins in a room (rounds with two or more players, won
+  by someone who didn't fail). The F8 player list and the full-screen room show "2 wins" next to the player, and the
+  spectator page shows it too. It's kept while the room exists, by player name.
+- **3-2-1 countdown:** once everyone has loaded, the server sends 3, 2, 1 half a second apart (1.5 s in all), the
+  number is drawn large over the loading screen, and `go` follows. New option **Countdown sound** (off by default; in
+  the F8 options and in the full-screen settings menu) plays the game's start sound on each tick. Older clients ignore
+  the countdown and start 1.5 s later.
+- **Live leaderboard:** narrower (20% less width, so it covers less of the notes), (the accuracy % stays). A player whose score updates stopped for more than 2 s (slow game, stall, lost connection) shows
+  a **LAG** chip and a dimmed card, and a player still on the loading screen shows **loading** (the board is now also
+  shown while waiting for the others). With **Score gaps** on (now the default for new installs) the other players show
+  how far ahead (+, red) or behind (-, teal) they are of you instead of their whole score; your card keeps your score.
+  If *our* scoreboard messages stop for 2 s, "no updates from the server" shows
+  below the board.
+- **Chart chips:** in the F8 window the host's highlighted song lists its charts as rounded chips in the difficulty
+  colours, muted. The chart the host selected is filled and outlined, the others are faint grey (all softly tinted
+  while the selection is unknown).
+- Server: `scores` gains `loading` and `lag`, players gain `wins`, the room gains `rounds`, and there is a new
+  `countdown` message (`docs/protocol.md`). The spectator page shows wins, "lagging" and "loading".
+
 ## 2.2.1-dev.1 (02.11.2026)
 - Server: a spectator web page at the server's address (`/`): every room with its state, players and song, a live
   leaderboard while a round plays (score, combo, completion bar, finished/failed) and the previous round's ranking.

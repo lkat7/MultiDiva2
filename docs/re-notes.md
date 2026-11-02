@@ -410,3 +410,20 @@ Names written are 26 chars (`rom/sound/song/pv_NNNN.ogg`-style, copied from the 
 - `StartPreview(state=rcx, const char* name=rdx, int id=r8d, float xmm3, [rsp+0x20]=float, [rsp+0x28]=float, [rsp+0x30]=bool)`; fields stored in state: +0 mode, +4 id, +8 xmm3, +0xC, +0x10, +0x20 std::string name.
 - The state machine (`1406F7870`) calls it with name = state+0x20 and floats state+8/+0xC/+0x10; the song-list code (`1406EEDE0`, rdx = pv entry) calls it with name = entry+0x50, xmm3 = entry+0x88, stack float = entry+0x8C, second float 0 (entry+0x88/0x8C are most likely the chorus start/length).
 - Plan: DR execute breakpoint on `1406F7650` (like filetrace's); when follow-host is on, replace rdx with our own char buffer (host's file name) and xmm3/stack floats. Needs the guest's cursor/state to trigger it, so best combined with the go-to-song work.
+
+## Song select cursor and list (CE findings + static dump, 2.2.1-dev)
+
+`pvsel` = song select object = highlight hook's `rcx` (the list object, `pvsel+0x3380`) minus `0x3380`.
+
+- Cursor: `widget = pvsel+0x18F08`, `[widget+4]` = index of the selected row (confirmed: follows Down/Up in CE). Reached in
+  code as `1406DE430(pvsel+0x1A50)` (+0x163E0) -> `1406E2FA0` (+0x10D8) -> getter `14023E8C0` (`mov eax,[rcx+4]`).
+- Setter `14023E8D0(widget, _, int newIndex)`: if `[widget]&4` calls `14023F190(widget,newIndex)` (a jump into protected
+  code, moves the view), then `[widget+4] = newIndex`. The go-to-song candidate. Not yet called from the mod.
+- Per frame `1406EFD10` copies the cursor to `pvsel+0x261F0` (previous index, change detection; writing it does nothing)
+  and derives the song: `item = at(pvsel+0x25930, index)`; `pv = [[[item]]]` i.e. `r15 = [[item]]`, `pv = [r15]` (`1406EFDBF..1406EFDE5`),
+  stored to `pvsel+0x262A4` (`1406EFE8A`, written every frame, 15107 hits in the CE count). -1 = no item, -2 = random slot.
+- `at(C, i)` (`140217640`): `V = [C+0xF0]`; count = `([V+8]-[V]) / 8` (`1402174E0`); element = `[[V] + i*8]`. So the list the
+  player sees can be walked with plain reads: for i in 0..count, item = `[[V]+i*8]`, pv = `[[[item]]]`... as above.
+- Random does not scroll: it replaces the random slot's song. `0x1406EFDA6/1406EFE8A/1406DEA22` etc. are in the CE list.
+- `161CA2BEB` (protected code) is a `push_back` of ints into a vector at a game global `0x14CBFA9B0 (+0xA0)`; not needed now.
+- Not found yet: the tab (ALL/favourites/...) field. The index above is into whatever list the current tab/sort shows.

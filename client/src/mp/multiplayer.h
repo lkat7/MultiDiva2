@@ -23,6 +23,7 @@ struct Player {
     bool hasAvatar = false; // custom avatar on the server (AvatarUrl), for players without a Steam one
     bool missing = false;   // reported not having the song in focus (State::focus)
     bool away = false;      // lost their connection; the server holds their place for about a minute
+    int wins = 0;           // rounds won in this room (session scoreboard)
 };
 
 struct Pick {
@@ -37,6 +38,8 @@ struct LiveScore {
     double completion = 0;
     bool finished = false;
     bool failed = false; // finished by failing or quitting
+    bool loading = false; // still on the loading screen, before the round was released
+    bool lag = false;     // no score update for 2 s since the release (slow game or lost connection)
 };
 
 struct FinalResult {
@@ -76,10 +79,14 @@ struct State {
     int hoverDifficulty = -1; // the chart the host selected for it: 0..3, -1 = unknown
     int hoverEdition = -1;     // 1 = the Extra chart
     int focus = -1; // pv everyone reports on: the hovered one, else the pick
+    int rounds = 0; // finished rounds with two or more players in this room (what Player::wins counts out of)
+    int countdown = 0;       // 3, 2, 1 while the round is being released, else 0
+    uint32_t countdownAt = 0; // GetTickCount() when that number arrived
     std::vector<Player> players;
 
     std::deque<ChatLine> chat;
     std::vector<LiveScore> scores;  // live leaderboard of the current round
+    uint32_t scoresAt = 0;          // GetTickCount() of the last `scores` message
     std::vector<FinalResult> results; // last round
     bool showResults = false;
 

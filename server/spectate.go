@@ -35,6 +35,9 @@ type SpectatePlayer struct {
 	Completion float64 `json:"completion"`
 	Finished   bool    `json:"finished,omitempty"`
 	Failed     bool    `json:"failed,omitempty"`
+	Wins       int     `json:"wins,omitempty"`
+	Lag        bool    `json:"lag,omitempty"`     // playing, but no score update for a while (or connection lost)
+	Loading    bool    `json:"loading,omitempty"` // still on the loading screen
 }
 
 type SpectateRoom struct {
@@ -42,6 +45,7 @@ type SpectateRoom struct {
 	State   string           `json:"state"`
 	Pick    *PickInfo        `json:"pick,omitempty"`  // the song being played, or picked for the next round
 	Hover   string           `json:"hover,omitempty"` // lobby: the song the host is looking at
+	Rounds  int              `json:"rounds,omitempty"`
 	Players []SpectatePlayer `json:"players"`
 	Last    *SpectateLast    `json:"last,omitempty"` // the previous round
 }
@@ -63,17 +67,25 @@ func (r *Room) Spectate() (SpectateRoom, bool) {
 	if r.closed || len(r.members) == 0 {
 		return SpectateRoom{}, false
 	}
-	out := SpectateRoom{Name: r.name, State: r.state, Players: []SpectatePlayer{}}
+	out := SpectateRoom{Name: r.name, State: r.state, Rounds: r.rounds, Players: []SpectatePlayer{}}
 	if r.pick != nil {
 		out.Pick = &PickInfo{PV: r.pick.PV, Difficulty: r.pick.Difficulty, Edition: r.pick.Edition, Title: r.pick.Title}
 	}
 	if r.state == StateLobby && r.hover >= 0 {
 		out.Hover = r.hoverTitle
 	}
+	live := map[int]LiveScore{}
+	if r.state == StatePlaying {
+		for _, ls := range r.liveScores().Players {
+			live[ls.ID] = ls
+		}
+	}
 	for _, m := range r.members {
+		ls := live[m.c.id]
 		out.Players = append(out.Players, SpectatePlayer{ID: m.c.id, Name: m.c.name, Host: m.c.id == r.host, Ready: m.ready,
 			Away: m.away, Avatar: m.c.hasAvatar, Playing: m.playing, Score: m.live.Score, Combo: m.live.Combo,
-			Completion: m.live.Completion, Finished: m.finished, Failed: m.result != nil && m.result.Failed})
+			Completion: m.live.Completion, Finished: m.finished, Failed: m.result != nil && m.result.Failed,
+			Wins: r.wins[m.c.name], Lag: ls.Lag, Loading: ls.Loading})
 	}
 	// Playing players by score, the others after them in join order.
 	sort.SliceStable(out.Players, func(i, j int) bool {

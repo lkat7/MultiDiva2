@@ -17,17 +17,18 @@ const (
 )
 
 type member struct {
-	c        *Client
-	ready    bool
-	playing  bool // part of the current round
-	finished bool
-	loaded   bool // reached the loading barrier this round
-	live     Score
-	result   *Result
-	havePV   int // last `have` report: song id and whether this player has it (-1 = none yet)
-	haveOK   bool
-	away     bool        // connection lost; the slot is held until `expiry` fires or the player resumes
-	expiry   *time.Timer // set while away
+	c         *Client
+	ready     bool
+	playing   bool // part of the current round
+	finished  bool
+	loaded    bool // reached the loading barrier this round
+	live      Score
+	lastScore time.Time // when the last live score arrived this round (zero = none yet)
+	result    *Result
+	havePV    int // last `have` report: song id and whether this player has it (-1 = none yet)
+	haveOK    bool
+	away      bool        // connection lost; the slot is held until `expiry` fires or the player resumes
+	expiry    *time.Timer // set while away
 }
 
 // Room holds one lobby. Every method takes the room lock; Client.Send never blocks,
@@ -51,12 +52,17 @@ type Room struct {
 	hoverDiff  int // the chart the host has selected for it, -1 = unknown
 	hoverEd    int
 
+	wins     map[string]int // rounds won by player name, kept while the room exists (names are unique in a room)
+	rounds   int            // finished rounds with at least two players
+	counting bool           // the 3-2-1 is running
+	goAt     time.Time      // when `go` was sent this round
+
 	lastResults []FinalResult // the previous round's ranking and what was played, for the spectator page
 	lastPick    *PickInfo
 }
 
 func newRoom(h *Hub, key, name string) *Room {
-	return &Room{hub: h, key: key, name: name, state: StateLobby, hover: -1, hoverDiff: -1, hoverEd: -1}
+	return &Room{hub: h, key: key, name: name, state: StateLobby, hover: -1, hoverDiff: -1, hoverEd: -1, wins: map[string]int{}}
 }
 
 func (r *Room) Empty() bool {
@@ -117,7 +123,7 @@ func (m *member) lacks(pv int) bool { return pv >= 0 && m.havePV == pv && !m.hav
 func (r *Room) snapshot() RoomMsg {
 	focus := r.focus()
 	msg := RoomMsg{Name: r.name, State: r.state, Host: r.host, Hover: r.hover, Focus: focus, Players: []PlayerInfo{},
-		HoverDiff: -1, HoverEd: -1}
+		HoverDiff: -1, HoverEd: -1, Rounds: r.rounds}
 	if r.hover >= 0 {
 		msg.HoverTitle = r.hoverTitle
 		msg.HoverDiff, msg.HoverEd = r.hoverDiff, r.hoverEd
@@ -127,7 +133,8 @@ func (r *Room) snapshot() RoomMsg {
 	}
 	for _, m := range r.members {
 		msg.Players = append(msg.Players, PlayerInfo{ID: m.c.id, Name: m.c.name, Ready: m.ready, Playing: m.playing,
-			Loaded: m.loaded, Steam: m.c.steam, Avatar: m.c.hasAvatar, Missing: m.lacks(focus), Away: m.away})
+			Loaded: m.loaded, Steam: m.c.steam, Avatar: m.c.hasAvatar, Missing: m.lacks(focus), Away: m.away,
+			Wins: r.wins[m.c.name]})
 	}
 	return msg
 }
@@ -478,6 +485,7 @@ func (r *Room) Handle(c *Client, env Envelope) {
 		}
 		if r.state == StatePlaying && me.playing && !me.finished {
 			me.live = m
+			me.lastScore = time.Now()
 		}
 
 	case "finish":
@@ -546,10 +554,13 @@ func (r *Room) startRound(isHost bool) string {
 	r.state = StatePlaying
 	r.round++
 	r.goSent = false
+	r.counting = false
+	r.goAt = time.Time{}
 	r.hover = -1
 	for _, m := range r.members {
 		m.playing, m.finished, m.ready, m.loaded = !m.lacks(r.pick.PV), false, false, false
 		m.live, m.result = Score{}, nil
+		m.lastScore = time.Time{}
 	}
 	log.Printf("room %q: round started, %s, %d players", r.name, describe(r.pick), len(r.members))
 	r.system("Round started: %s", describe(r.pick))
@@ -562,7 +573,7 @@ func (r *Room) startRound(isHost bool) string {
 	time.AfterFunc(r.hub.loadTimeout, func() {
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		if r.round == round && r.state == StatePlaying && !r.goSent {
+		if r.round == round && r.state == StatePlaying && !r.goSent && !r.counting {
 			log.Printf("room %q: loading timeout, starting without everyone", r.name)
 			r.system("Not everyone finished loading, starting anyway")
 			r.sendGo()
@@ -573,7 +584,7 @@ func (r *Room) startRound(isHost bool) string {
 
 // checkAllLoaded releases the loading barrier once every player still in the round has loaded.
 func (r *Room) checkAllLoaded() {
-	if r.goSent || r.state != StatePlaying {
+	if r.goSent || r.counting || r.state != StatePlaying {
 		return
 	}
 	for _, m := range r.members {
@@ -584,10 +595,33 @@ func (r *Room) checkAllLoaded() {
 	r.sendGo()
 }
 
+// sendGo starts the 3-2-1: the numbers go out one countStep apart and `go` follows one step after the 1 (clients
+// that don't know the countdown message just start a moment later).
 func (r *Room) sendGo() {
-	r.goSent = true
-	log.Printf("room %q: everyone loaded, go", r.name)
-	r.broadcast(encode("go", struct{}{}))
+	if r.goSent || r.counting {
+		return
+	}
+	r.counting = true
+	log.Printf("room %q: everyone loaded, counting down", r.name)
+	step, round := r.hub.countStep, r.round
+	later := func(delay time.Duration, f func()) {
+		time.AfterFunc(delay, func() {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			if r.closed || r.round != round || r.state != StatePlaying || r.goSent {
+				return // the round ended or restarted meanwhile
+			}
+			f()
+		})
+	}
+	r.broadcast(encode("countdown", CountdownMsg{N: 3}))
+	later(step, func() { r.broadcast(encode("countdown", CountdownMsg{N: 2})) })
+	later(2*step, func() { r.broadcast(encode("countdown", CountdownMsg{N: 1})) })
+	later(3*step, func() {
+		r.goSent, r.counting, r.goAt = true, false, time.Now()
+		log.Printf("room %q: go", r.name)
+		r.broadcast(encode("go", struct{}{}))
+	})
 }
 
 func (r *Room) checkRoundOver() {
@@ -610,6 +644,12 @@ func (r *Room) checkRoundOver() {
 
 	r.stopTicker()
 	r.state = StateLobby
+	if len(results) >= 2 { // a win needs someone to beat
+		r.rounds++
+		if !results[0].Result.Failed {
+			r.wins[results[0].Name]++
+		}
+	}
 	r.lastResults = append([]FinalResult(nil), results...)
 	if r.pick != nil {
 		r.lastPick = &PickInfo{PV: r.pick.PV, Difficulty: r.pick.Difficulty, Edition: r.pick.Edition, Title: r.pick.Title}
@@ -627,12 +667,25 @@ func (r *Room) checkRoundOver() {
 
 func (r *Room) liveScores() ScoresMsg {
 	out := ScoresMsg{Players: []LiveScore{}}
+	now := time.Now()
 	for _, m := range r.members {
 		if m.playing {
-			out.Players = append(out.Players, LiveScore{
+			ls := LiveScore{
 				ID: m.c.id, Name: m.c.name, Score: m.live.Score, Combo: m.live.Combo,
 				Completion: m.live.Completion, Finished: m.finished, Failed: m.result != nil && m.result.Failed,
-			})
+			}
+			if !m.finished {
+				if !r.goSent {
+					ls.Loading = !m.loaded
+				} else {
+					since := m.lastScore
+					if since.IsZero() || since.Before(r.goAt) {
+						since = r.goAt
+					}
+					ls.Lag = m.away || now.Sub(since) > r.hub.lagAfter
+				}
+			}
+			out.Players = append(out.Players, ls)
 		}
 	}
 	sort.SliceStable(out.Players, func(i, j int) bool { return out.Players[i].Score > out.Players[j].Score })

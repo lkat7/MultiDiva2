@@ -34,6 +34,7 @@ func startServer(t *testing.T) string {
 
 func startServerHub(t *testing.T) (string, *Hub) {
 	hub := NewHub(20*time.Millisecond, 300*time.Millisecond)
+	hub.countStep = 5 * time.Millisecond
 	srv := httptest.NewServer(httpHandler(hub, true))
 	t.Cleanup(srv.Close)
 	return "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws", hub
@@ -942,4 +943,11 @@ func TestHoverCarriesSelectedChart(t *testing.T) {
 	host.send("hover", HoverMsg{PV: 96, Title: "Other", Difficulty: &bad})
 	host.send("chat", ChatMsg{Text: "marker"})
 	guest.expect("chat", nil)
+}
+
+// expectNoneBeforeMarkerAfter is expectNoneBeforeMarker after waiting `wait` first (for delayed messages).
+func (c *testClient) expectNoneBeforeMarkerAfter(forbidden string, wait time.Duration) {
+	c.t.Helper()
+	time.Sleep(wait)
+	c.expectNoneBeforeMarker(forbidden)
 }

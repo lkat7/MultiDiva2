@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	ProtocolVersion = 1
-	ServerVersion   = "2.2.1-dev.1" // release the server belongs to, shown in the client
+	ServerVersion   = "2.2.1-dev.2" // release the server belongs to, shown in the client
 	LaunchBlockSize = 276           // stage entry [0x2C, 0x140), see docs/re-notes.md
 	MaxNameLen      = 24
 	MaxRoomLen      = 32
@@ -124,6 +124,7 @@ type PlayerInfo struct {
 	Avatar  bool   `json:"avatar,omitempty"`  // GET /avatar/<id>
 	Missing bool   `json:"missing,omitempty"` // reported not having the song in focus (RoomMsg.Focus)
 	Away    bool   `json:"away,omitempty"`    // connection lost; the slot is held for a short while for a resume
+	Wins    int    `json:"wins,omitempty"`    // rounds won in this room since it was created (session scoreboard)
 }
 
 type RoomMsg struct {
@@ -136,6 +137,7 @@ type RoomMsg struct {
 	HoverDiff  int          `json:"hoverDifficulty"`      // the chart selected for it, 0..3, -1 = unknown
 	HoverEd    int          `json:"hoverEdition"`         // 1 = the Extra chart, 0 = not, -1 = unknown
 	Focus      int          `json:"focus"`                // pv players report on with `have`: the hovered one, else the pick, -1 = none
+	Rounds     int          `json:"rounds,omitempty"`     // rounds finished with at least two players (what Wins counts out of)
 	Players    []PlayerInfo `json:"players"`
 }
 
@@ -169,7 +171,14 @@ type LiveScore struct {
 	Combo      int     `json:"combo"`
 	Completion float64 `json:"completion"`
 	Finished   bool    `json:"finished"`
-	Failed     bool    `json:"failed,omitempty"` // finished by failing (life ran out, or quit)
+	Failed     bool    `json:"failed,omitempty"`  // finished by failing (life ran out, or quit)
+	Loading    bool    `json:"loading,omitempty"` // still on the loading screen (the round hasn't been released yet)
+	Lag        bool    `json:"lag,omitempty"`     // no score update for LagAfter, or the connection is lost
+}
+
+// CountdownMsg: the 3-2-1 before the round is released; `go` follows after the last number.
+type CountdownMsg struct {
+	N int `json:"n"`
 }
 
 type ScoresMsg struct {

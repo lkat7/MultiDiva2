@@ -261,7 +261,10 @@ Hit PlayerRow(const Ctx& c, const mp::State& s, const mp::Player& p, float x, fl
     line.color = White;
     line.outline = IM_COL32(0, 0, 0, 110);
     line.outlineW = 2;
-    Text(c, lx(Normal.lineX, Selected.lineX), ly(Normal.lineY, Selected.lineY), StatusText(s, p), line);
+    std::string status = StatusText(s, p);
+    if (p.wins > 0) // the session scoreboard: rounds won in this room
+        status += p.wins == 1 ? "  -  1 win" : "  -  " + std::to_string(p.wins) + " wins";
+    Text(c, lx(Normal.lineX, Selected.lineX), ly(Normal.lineY, Selected.lineY), status.c_str(), line);
     if (!canHover)
         hit = Hit{};
     return hit;
@@ -702,12 +705,13 @@ void SettingsMenu(const Ctx& c, const RoomView& view, RoomAction& action)
         ImVec2 at = ImGui::GetWindowPos();
         Ctx m{ ImGui::GetWindowDrawList(), c.o, c.s };
         float x = (at.x - c.o.x) / c.s, y = (at.y - c.o.y) / c.s;
-        const float w = 470, h = 22 + 3 * 72 + 10;
+        const float w = 470, h = 22 + 4 * 72 + 10;
         m.dl->AddRectFilled(m.P(x, y), m.P(x + w, y + h), IM_COL32(20, 30, 50, 225), 12 * c.s);
         struct Row { const char* label; RoomAction::Kind kind; } rows[] = {
             { view.ownOutfits ? "Outfits: my own" : "Outfits: the host's", RoomAction::ToggleOutfits },
             { view.showLeaderboard ? "Live leaderboard: on" : "Live leaderboard: off", RoomAction::ToggleLeaderboard },
             { view.showGaps ? "Score gaps: on" : "Score gaps: off", RoomAction::ToggleGaps },
+            { view.countdownSound ? "Countdown sound: on" : "Countdown sound: off", RoomAction::ToggleCountdownSound },
         };
         float ry = y + 22;
         int key = 210;

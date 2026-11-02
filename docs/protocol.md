@@ -57,8 +57,9 @@ lobby --(host start, everyone ready, song picked)--> playing --(everyone finishe
 | `room` | room state, see below | sent on every change |
 | `chat` | `{from, name, text, system}` | `system` = server notices (joins, host changes) |
 | `start` | `{block, pv, difficulty, edition, title}` | auto-start now |
-| `go` | `{}` | everyone in the round has loaded (or the 30 s load timeout passed): release the hold and play |
-| `scores` | `{players: [{id, name, score, combo, completion, finished}]}` | ~10 Hz while playing, sorted by score |
+| `countdown` | `{n}` | everyone has loaded (or the load timeout passed): `n` = 3, 2, 1, one step (0.5 s) apart, then `go`. Older clients ignore it and just start 1.5 s later |
+| `go` | `{}` | the countdown is over: release the hold and play |
+| `scores` | `{players: [{id, name, score, combo, completion, finished, failed?, loading?, lag?}]}` | ~10 Hz while playing, sorted by score. `loading`: still on the loading screen (before `go`). `lag`: after `go`, no live score for 2 s (or the connection is lost) |
 | `results` | `{players: [{id, name, result, place}]}` | end of round, sorted by score |
 | `kicked` | `{room}` | the host removed you; you are in no room now |
 | `rooms` | `{rooms: [{name, host, players, playing}]}` | the open rooms, sent to players connected but in no room (after `welcome`, after leaving or a kick) and again ~150 ms after any room change; sorted by name |
@@ -75,7 +76,7 @@ Room state:
 }
 ```
 
-`pick` is `null` until the host picks. `playing` = in the current round. `hover` / `hoverTitle`: the host's highlighted song (`-1` = none). `hoverDifficulty` / `hoverEdition`: the chart the host selected for it (`-1` = unknown). `focus`: the song players report on with `have` (the hovered one in the lobby, else the pick); players who reported not having it carry `missing: true`. Names are unique per room (case-insensitive): a repeat is shown as `Name (2)`, `Name (3)`. Players whose connection dropped carry `away: true` while their slot is held. Players may also carry `steam` (Steam ID) and `avatar: true` (custom avatar at `GET /avatar/<id>`, same host as `/ws`).
+`pick` is `null` until the host picks. `playing` = in the current round. `hover` / `hoverTitle`: the host's highlighted song (`-1` = none). `hoverDifficulty` / `hoverEdition`: the chart the host selected for it (`-1` = unknown). `focus`: the song players report on with `have` (the hovered one in the lobby, else the pick); players who reported not having it carry `missing: true`. Names are unique per room (case-insensitive): a repeat is shown as `Name (2)`, `Name (3)`. Players whose connection dropped carry `away: true` while their slot is held. `wins` on a player is the rounds they won in this room (a round with at least two players, won by a player who did not fail; kept by name while the room exists) and `rounds` on the room how many such rounds were played. Players may also carry `steam` (Steam ID) and `avatar: true` (custom avatar at `GET /avatar/<id>`, same host as `/ws`).
 
 ## Dropped connections and resuming
 
