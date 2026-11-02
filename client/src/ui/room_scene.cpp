@@ -2,6 +2,7 @@
 #include "avatars.h"
 #include "game_sprites.h"
 #include "overlay.h"
+#include "../core/log.h"
 #include "../core/version.h"
 #include "../game/titles.h"
 
@@ -70,12 +71,20 @@ struct Style {
     ImU32 shadow = 0;   // drop shadow down-right, like the game's headings
 };
 
+// The overlay font used while the game's own font isn't available (never null: the screens used to crash on a null
+// scene font whenever the game's font sheet hadn't been found).
+ImFont* FallbackFont()
+{
+    const Fonts& f = GetFonts();
+    return f.sceneButton ? f.sceneButton : f.regular ? f.regular : ImGui::GetFont();
+}
+
 float TextW(const Style& st, const char* text)
 {
     float sp = st.spacing < 0 ? st.px * sprites::TitleSpacingOfSize : st.spacing;
     if (sprites::TextReady(st.font))
         return sprites::TextWidth(st.font, text, st.px, sp) + st.weight;
-    return GetFonts().sceneButton->CalcTextSizeA(st.px, FLT_MAX, 0, text).x;
+    return FallbackFont()->CalcTextSizeA(st.px, FLT_MAX, 0, text).x;
 }
 
 void Text(const Ctx& c, float x, float y, const char* text, const Style& st, float alpha = 1)
@@ -83,6 +92,11 @@ void Text(const Ctx& c, float x, float y, const char* text, const Style& st, flo
     float px = st.px * c.s;
     float sp = (st.spacing < 0 ? st.px * sprites::TitleSpacingOfSize : st.spacing) * c.s;
     bool game = sprites::TextReady(st.font);
+    static bool s_loggedFallback = false;
+    if (!game && !s_loggedFallback) {
+        s_loggedFallback = true;
+        Log("screens: the game's font isn't available yet, drawing text with the overlay font");
+    }
     auto draw = [&](float dx, float dy, ImU32 col) {
         ImVec2 p = c.P(x, y);
         p.x += dx;
@@ -90,7 +104,7 @@ void Text(const Ctx& c, float x, float y, const char* text, const Style& st, flo
         if (game)
             sprites::DrawText(c.dl, st.font, p, text, px, Alpha(col, alpha), sp);
         else
-            c.dl->AddText(GetFonts().sceneButton, px, p, Alpha(col, alpha), text);
+            c.dl->AddText(FallbackFont(), px, p, Alpha(col, alpha), text);
     };
     float heavy = st.weight * c.s;
     if (st.shadow)

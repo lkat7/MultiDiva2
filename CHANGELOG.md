@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.2.1-dev.3 (02.11.2026)
+- Fixes the crash when opening the full-screen multiplayer screens: they drew text with a font that was never set up
+  (`sceneButton`, a null pointer) whenever the game's own font sheet wasn't available, which the logs show was always
+  the case. The screens now fall back to the overlay font and log `screens: the game's font isn't available yet`.
+- Your own leaderboard card is 5% wider than the others (was 15%), and the BPM now follows the song title in the F8
+  window.
+
 ## 2.2.1-dev.2 (02.11.2026)
 - **Session scoreboard:** the server counts the rounds each player wins in a room (rounds with two or more players, won
   by someone who didn't fail). The F8 player list and the full-screen room show "2 wins" next to the player, and the
@@ -11,10 +18,10 @@
 - **Live leaderboard:** narrower (20% less width, so it covers less of the notes), (the accuracy % stays). A player whose score updates stopped for more than 2 s (slow game, stall, lost connection) shows
   a **LAG** chip and a dimmed card, and a player still on the loading screen shows **loading** (the board is now also
   shown while waiting for the others). With **Score gaps** on (now the default for new installs) the other players show
-  how far ahead (+, red) or behind (-, teal) they are of you instead of their whole score; your card keeps your score, is a bit wider and brighter, and has a teal outline.
+  how far ahead (+, red) or behind (-, teal) they are of you instead of their whole score; your card keeps your score, is 5% wider and brighter, and has a teal outline.
   If *our* scoreboard messages stop for 2 s, "no updates from the server" shows
   below the board.
-- **Chart chips:** in the F8 window the host's highlighted song lists its charts as rounded chips in the difficulty
+- **Chart chips** (the BPM now follows the song title): in the F8 window the host's highlighted song lists its charts as rounded chips in the difficulty
   colours, muted. The chart the host selected is filled and outlined, the others are faint grey (all softly tinted
   while the selection is unknown).
 - **Browse sounds:** when the host moves the song cursor or changes the difficulty in song select, guests in the lobby

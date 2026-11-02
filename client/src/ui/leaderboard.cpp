@@ -18,7 +18,7 @@ namespace md::ui {
 constexpr float CardHeightOfScreen = 0.060f; // ~65 px at 1080p
 constexpr float NameOfCard = 0.40f;
 constexpr float SmallOfCard = 0.31f;
-constexpr float OwnWidthFactor = 1.15f;      // our own card is this much wider than the others
+constexpr float OwnWidthFactor = 1.05f;      // our own card is this much wider than the others
 constexpr float WidthOfCard = 3.7f;          // card incl. avatar (was 4.6: it covered notes)
 constexpr float GapOfCard = 0.12f;
 constexpr float RoundingOfCard = 0.16f;

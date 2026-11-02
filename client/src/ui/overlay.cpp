@@ -139,6 +139,15 @@ static void LoadFonts(float scale, float screenHeight)
         s_fonts.cardName = s_fonts.regular;
     if (!s_fonts.countdown)
         s_fonts.countdown = s_fonts.regular;
+    // The full-screen screens' fallback fonts (used until the game's own font sheet has been found): never null.
+    if (!s_fonts.sceneTitle)
+        s_fonts.sceneTitle = s_fonts.hintTitle ? s_fonts.hintTitle : s_fonts.regular;
+    if (!s_fonts.sceneButton)
+        s_fonts.sceneButton = s_fonts.hintLine ? s_fonts.hintLine : s_fonts.regular;
+    if (!s_fonts.sceneText)
+        s_fonts.sceneText = s_fonts.regular;
+    if (!s_fonts.sceneSmall)
+        s_fonts.sceneSmall = s_fonts.cardSmall ? s_fonts.cardSmall : s_fonts.regular;
     if (!s_fonts.hintTitle)
         s_fonts.hintTitle = s_fonts.regular;
     if (!s_fonts.hintLine)

@@ -390,6 +390,10 @@ static void DrawRoundStatus(const mp::State& s)
         ImGui::TextColored(Dim, "%s", mp::IsHost() ? "Highlighted:" : "The host is looking at:");
         ImGui::SameLine();
         ImGui::TextUnformatted(title.c_str()); // the song's title in white
+        if (int bpm = songs::Bpm(s.hover); bpm > 0) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.45f, 0.45f, 0.49f, 1.0f), "  BPM %d", bpm); // greyer than the chart names
+        }
         // Its charts as chips in its difficulty's colour, muted (with the level when the game's database gives it).
         // The chart the host has selected is filled; the others are faint grey (all tinted while the selection is unknown).
         static const char* names[] = { "Easy", "Normal", "Hard", "Extreme", "Extra" };
@@ -427,12 +431,7 @@ static void DrawRoundStatus(const mp::State& s)
             ImGui::Dummy(size);
             ImGui::SameLine(0, style.ItemSpacing.x * 0.6f);
         }
-        ImGui::AlignTextToFramePadding(); // the BPM sits level with the chips
-        int bpm = songs::Bpm(s.hover);
-        if (bpm > 0)
-            ImGui::TextColored(ImVec4(0.45f, 0.45f, 0.49f, 1.0f), "BPM %d", bpm); // greyer than the chart names
-        else
-            ImGui::NewLine();
+        ImGui::NewLine(); // ends the chip row
         ImGui::EndGroup();
     }
     std::string missing;
