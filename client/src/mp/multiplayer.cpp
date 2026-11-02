@@ -287,6 +287,7 @@ void SendChat(const std::string& text)
 
 static void OnRoom(const json& d)
 {
+    const int prevHover = s.hover, prevDiff = s.hoverDifficulty, prevEdition = s.hoverEdition;
     s.inRoom = true;
     s.roomName = d.value("name", "");
     s.roomState = d.value("state", "lobby");
@@ -308,6 +309,20 @@ static void OnRoom(const json& d)
     s.focus = d.value("focus", -1);
     s.rounds = d.value("rounds", 0);
     ReportHave();
+
+    // The host browses song select: play the game's own cursor and difficulty sounds, so guests hear it happen.
+    // Only guests in the lobby and not in a song, and not faster than a few times a second.
+    static DWORD s_lastBrowseSound = 0;
+    if (!IsHost() && GetConfig().browseSounds && s.roomState == "lobby" && !s.inRound && !g_session.inSong && s.hover >= 0
+        && GetTickCount() - s_lastBrowseSound > 60) {
+        if (s.hover != prevHover && prevHover >= 0) { // not for the first highlight we hear about (joining, a new round)
+            launch::PlayGameSound("se_ft_music_selector_select_01");
+            s_lastBrowseSound = GetTickCount();
+        } else if (s.hover == prevHover && s.hoverDifficulty >= 0 && (s.hoverDifficulty != prevDiff || s.hoverEdition != prevEdition)) {
+            launch::PlayGameSound("se_ft_music_selector_difficulty_change_01");
+            s_lastBrowseSound = GetTickCount();
+        }
+    }
 }
 
 // Tells the room whether we have the song in focus, once per song (and chart, for the pick).
@@ -454,8 +469,13 @@ static void Handle(const std::string& raw)
         // 3, 2, 1 before `go` (0.5 s apart). Only drawn and heard by players who are in the round.
         s.countdown = d.value("n", 0);
         s.countdownAt = GetTickCount();
-        if (s.inRound && s.countdown > 0 && GetConfig().countdownSound)
-            launch::PlayStartSound();
+        if (s.inRound && s.countdown > 0 && GetConfig().countdownSound) {
+            // 3 and 2: the song cursor sound; 1: the sound of entering the song.
+            if (s.countdown == 1)
+                launch::PlayStartSound();
+            else
+                launch::PlayGameSound("se_ft_music_selector_select_01");
+        }
     } else if (type == "go") {
         s.countdown = 0;
         s_goReceived = true;

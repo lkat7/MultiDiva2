@@ -74,12 +74,14 @@ static const uint8_t PlaySeBytes[] = { 0x48, 0x8B, 0xD1, 0x0F, 0x28, 0xD1, 0xB9,
 using PlaySeFn = void(__fastcall*)(const char* name, float volume);
 static constexpr const char* StartSound = "se_ft_music_selector_enter_01";
 
-void PlayStartSound()
+void PlayGameSound(const char* name)
 {
     uint8_t check[sizeof(PlaySeBytes)];
     if (SafeRead(PlaySe, check) && memcmp(check, PlaySeBytes, sizeof(check)) == 0)
-        ((PlaySeFn)PlaySe)(StartSound, 1.0f);
+        ((PlaySeFn)PlaySe)(name, 1.0f);
 }
+
+void PlayStartSound() { PlayGameSound(StartSound); }
 
 bool InSongSelect()
 {

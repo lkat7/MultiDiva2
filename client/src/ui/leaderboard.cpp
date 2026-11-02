@@ -18,6 +18,7 @@ namespace md::ui {
 constexpr float CardHeightOfScreen = 0.060f; // ~65 px at 1080p
 constexpr float NameOfCard = 0.40f;
 constexpr float SmallOfCard = 0.31f;
+constexpr float OwnWidthFactor = 1.15f;      // our own card is this much wider than the others
 constexpr float WidthOfCard = 3.7f;          // card incl. avatar (was 4.6: it covered notes)
 constexpr float GapOfCard = 0.12f;
 constexpr float RoundingOfCard = 0.16f;
@@ -145,7 +146,7 @@ void DrawLeaderboard(const mp::State& s)
 
     // Cards hug the left screen edge, like osu!.
     ImGui::SetNextWindowPos(ImVec2(vp->Pos.x, vp->Pos.y + vp->Size.y * TopOfScreen), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(width + 2, count * (cardH + gap) + cardH * 0.6f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(width * OwnWidthFactor + 2, count * (cardH + gap) + cardH * 0.6f), ImGuiCond_Always);
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings
         | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoBackground;
     if (!ImGui::Begin("##leaderboard", nullptr, flags)) {
@@ -168,12 +169,14 @@ void DrawLeaderboard(const mp::State& s)
         const float dim = stale ? 0.62f : 1.0f;
 
         ImVec2 a(origin.x, std::round(origin.y + r.y * (cardH + gap)));
-        ImVec2 b(a.x + width, a.y + cardH);
+        ImVec2 b(a.x + (me ? width * OwnWidthFactor : width), a.y + cardH);
         ImVec2 avB(a.x + cardH, b.y);
 
         // Card body: translucent navy, rounded on the right; the avatar sits square on the left.
-        ImVec4 navy = me ? ImVec4(0.10f, 0.17f, 0.26f, 0.80f * dim) : ImVec4(0.06f, 0.09f, 0.16f, 0.66f * dim);
+        ImVec4 navy = me ? ImVec4(0.13f, 0.23f, 0.35f, 0.90f * dim) : ImVec4(0.06f, 0.09f, 0.16f, 0.66f * dim);
         dl->AddRectFilled(a, b, ImGui::GetColorU32(navy), rounding, ImDrawFlags_RoundCornersRight);
+        if (me) // a teal outline: our own card stands out from the others
+            dl->AddRect(a, b, Col(Teal, 0.85f * dim), rounding, ImDrawFlags_RoundCornersRight, 2.0f);
         if (r.overtake > 0)
             dl->AddRectFilled(a, b, Col(me ? Teal : Gold, 0.28f * r.overtake), rounding, ImDrawFlags_RoundCornersRight);
         if (r.comboBreak > 0)

@@ -14,6 +14,7 @@
 #include "../game/launch.h"
 #include "../game/session.h"
 
+#include <cmath>
 #include <imgui.h>
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
@@ -100,6 +101,8 @@ static ImFont* AddTextFont(const std::string& segoe, float size)
     return font;
 }
 
+float CountdownFontPx(float screenHeight) { return std::round(screenHeight * 0.24f); }
+
 static void LoadFonts(float scale, float screenHeight)
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -117,6 +120,14 @@ static void LoadFonts(float scale, float screenHeight)
         s_fonts.hintTitle = io.Fonts->AddFontFromFileTTF(segoe.c_str(), HintTitleFontPx(screenHeight));
         s_fonts.hintLine = io.Fonts->AddFontFromFileTTF(segoe.c_str(), HintLineFontPx(screenHeight));
     }
+    {
+        // The countdown digits: Segoe UI Bold at the size they are drawn (no stretching = no blur), digits only.
+        static const ImWchar digits[] = { '0', '9', 0 };
+        std::string bold = std::string(windir) + "\\Fonts\\segoeuib.ttf";
+        const std::string& file = GetFileAttributesA(bold.c_str()) != INVALID_FILE_ATTRIBUTES ? bold : segoe;
+        if (GetFileAttributesA(file.c_str()) != INVALID_FILE_ATTRIBUTES)
+            s_fonts.countdown = io.Fonts->AddFontFromFileTTF(file.c_str(), CountdownFontPx(screenHeight), nullptr, digits);
+    }
     if (!s_fonts.regular) {
         ImFontConfig cfg;
         cfg.SizePixels = 13.0f * scale;
@@ -126,6 +137,8 @@ static void LoadFonts(float scale, float screenHeight)
         s_fonts.cardSmall = s_fonts.regular;
     if (!s_fonts.cardName)
         s_fonts.cardName = s_fonts.regular;
+    if (!s_fonts.countdown)
+        s_fonts.countdown = s_fonts.regular;
     if (!s_fonts.hintTitle)
         s_fonts.hintTitle = s_fonts.regular;
     if (!s_fonts.hintLine)

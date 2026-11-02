@@ -192,6 +192,9 @@ static void DrawLaunchOverride()
     }
     if (ImGui::Button("Play start sound"))
         launch::PlayStartSound();
+    // The 3-2-1 before a round: the game's cursor sound on 3 and 2, its enter sound on 1.
+    if (ImGui::Checkbox("Countdown sound (3-2-1)", &GetConfig().countdownSound))
+        SaveConfig();
 
     int32_t hovered = songs::Hovered();
     if (hovered >= 0) {

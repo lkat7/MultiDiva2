@@ -632,7 +632,7 @@ static void DrawScreens(bool* open)
         view.ownOutfits = cfg.ownOutfits;
         view.showLeaderboard = cfg.showLeaderboard;
         view.showGaps = cfg.showGaps;
-        view.countdownSound = cfg.countdownSound;
+        view.browseSounds = cfg.browseSounds;
         // The plate follows the host's highlight in song select, else shows the last song played.
         view.songPv = s.hover >= 0 ? s.hover : s.pick ? s.pick->pv : -1;
         if (s.hover >= 0) {
@@ -698,8 +698,8 @@ static void DrawScreens(bool* open)
             cfg.showGaps = !cfg.showGaps;
             SaveConfig();
             break;
-        case RoomAction::ToggleCountdownSound:
-            cfg.countdownSound = !cfg.countdownSound;
+        case RoomAction::ToggleBrowseSounds:
+            cfg.browseSounds = !cfg.browseSounds;
             SaveConfig();
             break;
         case RoomAction::ToggleOutfits:
@@ -896,10 +896,10 @@ void DrawLobby(bool* open)
             ImGui::SetTooltip("The other players' cards show how far ahead or behind you they are, not their whole score.");
         ImGui::SameLine();
         ImGui::TextColored(Dim, "(F9 hides everything)");
-        if (ImGui::Checkbox("Countdown sound", &cfg.countdownSound))
+        if (ImGui::Checkbox("Browse sounds", &cfg.browseSounds))
             SaveConfig();
         ImGui::SameLine();
-        ImGui::TextColored(Dim, "A tick for each of the 3-2-1 before a round starts.");
+        ImGui::TextColored(Dim, "Hear the cursor and difficulty sounds when the host browses songs.");
         if (ImGui::Checkbox("My own outfits", &cfg.ownOutfits))
             SaveConfig();
         ImGui::SameLine();
@@ -1020,11 +1020,11 @@ static void DrawCountdown(const mp::State& s)
     constexpr float StepMs = 500.0f;
     float t = (float)(GetTickCount() - s.countdownAt) / StepMs;
     t = t < 0 ? 0 : t > 1 ? 1 : t;
-    float pop = t < 0.25f ? 1.0f + 0.35f * (1.0f - t / 0.25f) * (1.0f - t / 0.25f) : 1.0f; // eases down to size
+    float pop = t < 0.25f ? 1.0f + 0.12f * (1.0f - t / 0.25f) * (1.0f - t / 0.25f) : 1.0f; // eases down to size
     float alpha = t < 0.7f ? 1.0f : 1.0f - (t - 0.7f) / 0.3f;
     const ImGuiViewport* vp = ImGui::GetMainViewport();
-    ImFont* font = GetFonts().exoXL ? GetFonts().exoXL : ImGui::GetFont();
-    const float size = vp->Size.y * 0.24f * pop;
+    ImFont* font = GetFonts().countdown ? GetFonts().countdown : ImGui::GetFont();
+    const float size = CountdownFontPx(vp->Size.y) * pop; // the font is baked at this size: sharp at 1.0, a touch soft in the pop
     char text[8];
     snprintf(text, sizeof(text), "%d", s.countdown);
     ImVec2 box = font->CalcTextSizeA(size, FLT_MAX, 0.0f, text);

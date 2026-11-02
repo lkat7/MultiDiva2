@@ -711,7 +711,7 @@ void SettingsMenu(const Ctx& c, const RoomView& view, RoomAction& action)
             { view.ownOutfits ? "Outfits: my own" : "Outfits: the host's", RoomAction::ToggleOutfits },
             { view.showLeaderboard ? "Live leaderboard: on" : "Live leaderboard: off", RoomAction::ToggleLeaderboard },
             { view.showGaps ? "Score gaps: on" : "Score gaps: off", RoomAction::ToggleGaps },
-            { view.countdownSound ? "Countdown sound: on" : "Countdown sound: off", RoomAction::ToggleCountdownSound },
+            { view.browseSounds ? "Browse sounds: on" : "Browse sounds: off", RoomAction::ToggleBrowseSounds },
         };
         float ry = y + 22;
         int key = 210;
