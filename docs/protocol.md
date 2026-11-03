@@ -38,12 +38,13 @@ lobby --(host start, everyone ready, song picked)--> playing --(everyone finishe
 | `leave` | `{}` | back to no room |
 | `chat` | `{text}` | max 300 chars |
 | `ready` | `{ready}` | lobby only |
+| `mode` | `{mode}` | host only, lobby only: how the room ranks players, `"score"` (default) or `"accuracy"` (the completion percentage; the score breaks a tie). It changes the order of the live `scores`, of the `results` and of who gets a round win |
 | `hover` | `{pv, title, difficulty?, edition?}` | host only, lobby only: the song highlighted in song select (`-1` = none), its title and the chart the host has selected for it (`difficulty` 0..3, `edition` 1 = the Extra chart); both optional, older clients send neither |
 | `have` | `{pv, ok}` | whether this player has song `pv` (the room's `focus`); players without it sit the round out |
 | `host` | `{id}` | host only: makes that player the host |
 | `kick` | `{id}` | host only: removes that player (they get `kicked`; not a ban, they may join again). Counts as leaving during a round |
 | `pick` | `{block, pv, difficulty, edition, title}` | host only, lobby only. `block` = base64 of the 276-byte launch block. Optional preview, clears ready flags |
-| `start` | `{}` or pick data | host only. Needs a pick (or pick data in this message) and every player ready (host counts as ready). Sending pick data here does not clear ready flags |
+| `start` | `{}` or pick data | host only. Needs a pick (or pick data in this message) and every player ready (host counts as ready). Sending pick data here does not clear ready flags. `force: true` skips the ready check (the host started anyway); the unready players get the song like the rest |
 | `title` | `{title}` | host only: the current pick's song title, sent once the host's game shows it |
 | `loaded` | `{}` | this player's song finished loading and is held on NOW LOADING |
 | `score` | `{score, combo, completion, cool, fine, safe, sad, worst}` | while playing, ~10 Hz. Live values |
@@ -76,7 +77,7 @@ Room state:
 }
 ```
 
-`pick` is `null` until the host picks. `playing` = in the current round. `hover` / `hoverTitle`: the host's highlighted song (`-1` = none). `hoverDifficulty` / `hoverEdition`: the chart the host selected for it (`-1` = unknown). `focus`: the song players report on with `have` (the hovered one in the lobby, else the pick); players who reported not having it carry `missing: true`. Names are unique per room (case-insensitive): a repeat is shown as `Name (2)`, `Name (3)`. Players whose connection dropped carry `away: true` while their slot is held. `wins` on a player is the rounds they won in this room (a round with at least two players, won by a player who did not fail; kept by name while the room exists) and `rounds` on the room how many such rounds were played. Players may also carry `steam` (Steam ID) and `avatar: true` (custom avatar at `GET /avatar/<id>`, same host as `/ws`).
+`pick` is `null` until the host picks. `playing` = in the current round. `hover` / `hoverTitle`: the host's highlighted song (`-1` = none). `hoverDifficulty` / `hoverEdition`: the chart the host selected for it (`-1` = unknown). `focus`: the song players report on with `have` (the hovered one in the lobby, else the pick); players who reported not having it carry `missing: true`. Names are unique per room (case-insensitive): a repeat is shown as `Name (2)`, `Name (3)`. Players whose connection dropped carry `away: true` while their slot is held. `wins` on a player is the rounds they won in this room (a round with at least two players, won by a player who did not fail; kept by name while the room exists) and `rounds` on the room how many such rounds were played. `mode` on the room is `"accuracy"` when the room ranks by accuracy (absent = by score). Players may also carry `steam` (Steam ID) and `avatar: true` (custom avatar at `GET /avatar/<id>`, same host as `/ws`).
 
 ## Dropped connections and resuming
 

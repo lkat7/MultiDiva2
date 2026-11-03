@@ -163,3 +163,88 @@ func TestLagFlag(t *testing.T) {
 	}
 	t.Fatal("silent player was never flagged as lagging")
 }
+
+func TestModeOnlyHostInLobby(t *testing.T) {
+	url := startServer(t)
+	host := connect(t, url, "Host")
+	guest := connect(t, url, "Guest")
+	joinInOrder(host, guest, "r")
+
+	guest.send("mode", ModeMsg{Mode: ModeAccuracy})
+	guest.expectError("only the host")
+	host.send("mode", ModeMsg{Mode: "chaos"})
+	host.expectError("unknown mode")
+	host.send("mode", ModeMsg{Mode: ModeAccuracy})
+	r := guest.expectRoom(func(r RoomMsg) bool { return r.Mode == ModeAccuracy })
+	if r.State != StateLobby {
+		t.Fatalf("room = %+v", r)
+	}
+	host.send("mode", ModeMsg{Mode: ModeScore})
+	guest.expectRoom(func(r RoomMsg) bool { return r.Mode == "" }) // score is the default and is left out
+}
+
+// In accuracy mode the live ranking, the results and the wins follow the completion percentage, not the score.
+func TestAccuracyMode(t *testing.T) {
+	url := startServer(t)
+	host := connect(t, url, "Host")
+	guest := connect(t, url, "Guest")
+	joinInOrder(host, guest, "r")
+	host.send("mode", ModeMsg{Mode: ModeAccuracy})
+	guest.expectRoom(func(r RoomMsg) bool { return r.Mode == ModeAccuracy })
+	guest.send("ready", ReadyMsg{Ready: true})
+	host.expectRoom(func(r RoomMsg) bool { return r.Players[1].Ready })
+	host.send("start", validPick(54))
+	host.expect("start", nil)
+	guest.expect("start", nil)
+	host.send("loaded", nil)
+	guest.send("loaded", nil)
+	host.expect("go", nil)
+
+	// The host scores more points, the guest hits more notes: the guest leads the live board.
+	host.send("score", Score{Score: 900000, Completion: 80})
+	guest.send("score", Score{Score: 700000, Completion: 95})
+	for {
+		var s ScoresMsg
+		host.expect("scores", &s)
+		if len(s.Players) == 2 && s.Players[0].Completion == 95 && s.Players[1].Completion == 80 {
+			if s.Players[0].Name != "Guest" {
+				t.Fatalf("scores = %+v", s)
+			}
+			break
+		}
+	}
+	host.send("finish", FinishMsg{Result: Result{Score: Score{Score: 900000, Completion: 80}, Grade: 3}})
+	guest.send("finish", FinishMsg{Result: Result{Score: Score{Score: 700000, Completion: 95}, Grade: 3}})
+	var res ResultsMsg
+	host.expect("results", &res)
+	if res.Players[0].Name != "Guest" || res.Players[0].Place != 1 {
+		t.Fatalf("results = %+v", res)
+	}
+	r := host.expectRoom(func(r RoomMsg) bool { return r.State == StateLobby && !r.Players[0].Playing })
+	if r.Players[1].Wins != 1 || r.Players[0].Wins != 0 || r.Mode != ModeAccuracy {
+		t.Fatalf("after round: %+v", r)
+	}
+}
+
+// The host can start although a player isn't ready, with `force`; without it the start is refused.
+func TestForceStart(t *testing.T) {
+	url := startServer(t)
+	host := connect(t, url, "Host")
+	guest := connect(t, url, "Guest")
+	joinInOrder(host, guest, "r")
+
+	host.send("start", validPick(54))
+	host.expectError("Guest is not ready")
+	guest.send("start", PickMsg{Block: validPick(54).Block, PV: 54, Force: true})
+	guest.expectError("only the host")
+
+	forced := validPick(54)
+	forced.Force = true
+	host.send("start", forced)
+	var start PickMsg
+	guest.expect("start", &start)
+	if start.PV != 54 || start.Force {
+		t.Fatalf("start = %+v", start)
+	}
+	host.expectRoom(func(r RoomMsg) bool { return r.State == StatePlaying })
+}

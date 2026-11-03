@@ -75,13 +75,15 @@ function avatar(p) {
   const img = el("img", "av");
   img.alt = "";
   img.loading = "lazy";
-  if (p.avatar) img.src = "/avatar/" + p.id;
+  img.referrerPolicy = "no-referrer"; // don't tell Steam's image server which page this is
+  if (p.avatar) img.src = "/avatar/" + p.id; // a custom picture wins over the Steam one, as in the game
+  else if (p.avatarUrl) img.src = p.avatarUrl;
   else img.style.visibility = "hidden";
   return img;
 }
 const fmt = n => n.toLocaleString("en-US");
 
-function playerRow(p, place) {
+function playerRow(p, place, byAccuracy) {
   const live = p.playing;
   const row = el("div", "row" + (live ? "" : " lobby"));
   if (live) row.append(el("div", "place live", String(place)));
@@ -105,22 +107,23 @@ function playerRow(p, place) {
   }
   row.append(mid);
   if (live) {
-    const n = el("div", "num", fmt(p.score));
-    n.append(el("small", "", p.completion.toFixed(2) + "% · " + p.combo + " combo"));
+    // Ranked by accuracy: the percentage is the big number and the score the small one.
+    const n = el("div", "num", byAccuracy ? p.completion.toFixed(2) + "%" : fmt(p.score));
+    n.append(el("small", "", (byAccuracy ? fmt(p.score) : p.completion.toFixed(2) + "%") + " · " + p.combo + " combo"));
     row.append(n);
   } else row.append(el("div"));
   return row;
 }
 
-function lastRound(last) {
+function lastRound(last, byAccuracy) {
   const d = el("details");
   const s = el("summary", "", "Last round: " + (last.pick ? songName(last.pick) : "") + (last.pick ? " (" + (DIFFS[diffIndex(last.pick)] || "") + ")" : ""));
   d.append(s);
   last.results.forEach(r => {
     const row = el("div", "row");
     row.append(el("div", "place", String(r.place)), el("div"), el("div", "name" + (r.result.failed ? " fail" : ""), r.name + (r.result.failed ? " (failed)" : "")));
-    const n = el("div", "num", fmt(r.result.score));
-    n.append(el("small", "", r.result.maxCombo + " max combo"));
+    const n = el("div", "num", byAccuracy ? r.result.completion.toFixed(2) + "%" : fmt(r.result.score));
+    n.append(el("small", "", (byAccuracy ? fmt(r.result.score) : r.result.completion.toFixed(2) + "%") + " · " + r.result.maxCombo + " max combo"));
     row.append(n);
     d.append(row);
   });
@@ -134,14 +137,15 @@ function roomCard(r) {
   const playing = r.state === "playing";
   head.append(el("span", "badge" + (playing ? " playing" : ""), playing ? "playing" : "lobby"));
   head.append(el("span", "badge", r.players.length + (r.players.length === 1 ? " player" : " players")));
+  if (r.mode === "accuracy") head.append(el("span", "badge", "ranked by accuracy"));
   if (r.rounds) head.append(el("span", "badge", r.rounds + (r.rounds === 1 ? " round" : " rounds") + " played"));
   c.append(head);
   if (r.pick && (playing || !r.hover)) c.append(songLine(r.pick, playing ? "" : "Next:"));
   else if (r.hover) c.append(el("div", "song", "Host is looking at: " + r.hover));
   else c.append(el("div", "song", "No song picked yet"));
   let place = 0;
-  r.players.forEach(p => c.append(playerRow(p, p.playing ? ++place : 0)));
-  if (r.last && r.last.results.length) c.append(lastRound(r.last));
+  r.players.forEach(p => c.append(playerRow(p, p.playing ? ++place : 0, r.mode === "accuracy")));
+  if (r.last && r.last.results.length) c.append(lastRound(r.last, r.mode === "accuracy"));
   return c;
 }
 

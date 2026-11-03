@@ -27,7 +27,8 @@ type Hub struct {
 	probeWait   time.Duration
 	sessions    map[string]*Client
 
-	spectators spectators // spectator pages listening on /spectate-ws
+	steamPics  *steamAvatars // Steam profile pictures for the spectator page
+	spectators spectators    // spectator pages listening on /spectate-ws
 
 	lagAfter  time.Duration // how long a player's score updates may stay away before the leaderboard marks them as lagging
 	countStep time.Duration // one tick of the 3-2-1 before `go` (the whole countdown is three of them)
@@ -36,7 +37,7 @@ type Hub struct {
 }
 
 func NewHub(tickEvery, loadTimeout time.Duration) *Hub {
-	return &Hub{rooms: map[string]*Room{}, avatars: map[int]Avatar{}, tickEvery: tickEvery, loadTimeout: loadTimeout,
+	return &Hub{steamPics: newSteamAvatars(), rooms: map[string]*Room{}, avatars: map[int]Avatar{}, tickEvery: tickEvery, loadTimeout: loadTimeout,
 		lobby: lobby{clients: map[*Client]struct{}{}}, resumeGrace: 60 * time.Second, countStep: DefaultCountStep, lagAfter: 2 * time.Second, probeEvery: 10 * time.Second, probeWait: 10 * time.Second, sessions: map[string]*Client{}}
 }
 

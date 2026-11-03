@@ -719,14 +719,16 @@ void SettingsMenu(const Ctx& c, const RoomView& view, RoomAction& action)
         ImVec2 at = ImGui::GetWindowPos();
         Ctx m{ ImGui::GetWindowDrawList(), c.o, c.s };
         float x = (at.x - c.o.x) / c.s, y = (at.y - c.o.y) / c.s;
-        const float w = 470, h = 22 + 4 * 72 + 10;
+        struct Row { const char* label; RoomAction::Kind kind; };
+        std::vector<Row> rows;
+        if (view.host) // only the host picks how the room ranks players
+            rows.push_back({ view.accuracyMode ? "Win by: accuracy" : "Win by: score", RoomAction::ToggleMode });
+        rows.push_back({ view.ownOutfits ? "Outfits: my own" : "Outfits: the host's", RoomAction::ToggleOutfits });
+        rows.push_back({ view.showLeaderboard ? "Live leaderboard: on" : "Live leaderboard: off", RoomAction::ToggleLeaderboard });
+        rows.push_back({ view.showGaps ? "Score gaps: on" : "Score gaps: off", RoomAction::ToggleGaps });
+        rows.push_back({ view.browseSounds ? "Browse sounds: on" : "Browse sounds: off", RoomAction::ToggleBrowseSounds });
+        const float w = 470, h = 22 + (float)rows.size() * 72 + 10;
         m.dl->AddRectFilled(m.P(x, y), m.P(x + w, y + h), IM_COL32(20, 30, 50, 225), 12 * c.s);
-        struct Row { const char* label; RoomAction::Kind kind; } rows[] = {
-            { view.ownOutfits ? "Outfits: my own" : "Outfits: the host's", RoomAction::ToggleOutfits },
-            { view.showLeaderboard ? "Live leaderboard: on" : "Live leaderboard: off", RoomAction::ToggleLeaderboard },
-            { view.showGaps ? "Score gaps: on" : "Score gaps: off", RoomAction::ToggleGaps },
-            { view.browseSounds ? "Browse sounds: on" : "Browse sounds: off", RoomAction::ToggleBrowseSounds },
-        };
         float ry = y + 22;
         int key = 210;
         for (const Row& r : rows) {

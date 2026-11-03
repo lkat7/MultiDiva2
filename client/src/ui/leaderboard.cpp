@@ -118,8 +118,13 @@ void DrawLeaderboard(const mp::State& s)
     const bool showGaps = GetConfig().showGaps;
 
     bool haveMe = false; // our own card is on the board (not after we quit): the others can show a difference to it
+    double myCompletion = 0;
     for (const mp::LiveScore& p : s.scores)
-        haveMe |= p.id == s.myId;
+        if (p.id == s.myId) {
+            haveMe = true;
+            myCompletion = p.completion;
+        }
+    const bool byAccuracy = s.mode == "accuracy"; // the room ranks by completion %: it is the big number on the cards
 
     // Update animation state from the latest server ranking (scores arrive sorted).
     for (int rank = 0; rank < count; rank++) {
@@ -202,11 +207,16 @@ void DrawLeaderboard(const mp::State& s)
         ImVec2 rankSz = Measure(fonts.cardName, nameSize * 1.15f, buf);
         Text(dl, fonts.cardName, nameSize * 1.15f, ImVec2(right - rankSz.x, a.y + cardH * 0.30f), Col(White, 0.10f), buf);
 
-        // First line: the name, and the accuracy at the right (the game's completion percentage).
-        snprintf(buf, sizeof(buf), "%.2f%%", std::floor(p.completion * 100.0 + 1e-6) / 100.0);
+        // First line: the name, and at the right the accuracy (the game's completion percentage), or in accuracy mode
+        // the score, dimmer, since the percentage is what the card ranks by.
+        if (byAccuracy)
+            FormatThousands(buf, sizeof(buf), std::llround(r.shownScore));
+        else
+            snprintf(buf, sizeof(buf), "%.2f%%", std::floor(p.completion * 100.0 + 1e-6) / 100.0);
         ImVec2 pctSz = Measure(fonts.cardSmall, smallSize, buf);
         const float nameY = a.y + cardH * 0.08f;
-        Text(dl, fonts.cardSmall, smallSize, ImVec2(right - pctSz.x, nameY + (nameSize - smallSize) * 0.7f), Col(White, 0.72f * alpha), buf);
+        Text(dl, fonts.cardSmall, smallSize, ImVec2(right - pctSz.x, nameY + (nameSize - smallSize) * 0.7f),
+            Col(White, (byAccuracy ? 0.60f : 0.72f) * alpha), buf);
         ImVec4 clip(textX, a.y, right - pctSz.x - pad * 0.4f, b.y);
         Text(dl, fonts.cardName, nameSize, ImVec2(textX, nameY), Col(White, alpha), p.name.c_str(), &clip);
 
@@ -218,7 +228,22 @@ void DrawLeaderboard(const mp::State& s)
         const bool asGap = showGaps && haveMe && !me && !p.finished && !noScore;
         ImVec4 scoreColor = White;
         float scoreAlpha = noScore ? 0.45f : 0.92f;
-        if (asGap) {
+        if (byAccuracy) {
+            // Our own card shows our accuracy; with "Score gaps" on the others show how many points ahead (+, red) or
+            // behind (-, teal) of us they are.
+            const double pct = std::floor(p.completion * 100.0 + 1e-6) / 100.0;
+            if (asGap) {
+                const double diff = p.completion - myCompletion;
+                if (std::fabs(diff) < 0.005)
+                    snprintf(buf, sizeof(buf), "even");
+                else
+                    snprintf(buf, sizeof(buf), "%c%.2f%%", diff > 0 ? '+' : '-', std::fabs(diff));
+                scoreColor = diff > 0.005 ? Red : Teal;
+                scoreAlpha = 0.95f;
+            } else {
+                snprintf(buf, sizeof(buf), "%.2f%%", pct);
+            }
+        } else if (asGap) {
             const long long diff = std::llround(r.shownScore) - std::llround(g_rows[s.myId].shownScore);
             buf[0] = diff > 0 ? '+' : diff < 0 ? '-' : ' ';
             FormatThousands(buf + 1, sizeof(buf) - 1, diff < 0 ? -diff : diff);

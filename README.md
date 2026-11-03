@@ -12,6 +12,7 @@ Join a room with friends, the host picks a song, and it starts for everyone at t
 - The host plays any song in song select and it starts for everyone in the room, all at the same moment
 - A live leaderboard during the song (it can be hidden), and shared results afterwards
 - Everyone plays with their own outfits, or with the host's
+- In a room only the host can start a song, and only when everyone is ready: confirm in song select is refused otherwise, with a notice on screen (the host presses confirm again within 5 seconds to start anyway)
 - Warns when someone in the room doesn't have the song the host is looking at (custom song packs for example)
 - The host can hand over host or kick players (right-click a player)
 - Steam profile pictures, or your own: drop an `avatar.png` next to `MultiDiva.dll` (it is shrunk to fit)

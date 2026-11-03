@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	ProtocolVersion = 1
-	ServerVersion   = "2.2.1-dev.3" // release the server belongs to, shown in the client
+	ServerVersion   = "2.2.1-dev.4" // release the server belongs to, shown in the client
 	LaunchBlockSize = 276           // stage entry [0x2C, 0x140), see docs/re-notes.md
 	MaxNameLen      = 24
 	MaxRoomLen      = 32
@@ -41,6 +41,18 @@ type ChatMsg struct {
 	Text string `json:"text"`
 }
 
+// Win conditions a room can play by (ModeMsg, RoomMsg.Mode): who ranks first in the live leaderboard, the results and
+// the session scoreboard.
+const (
+	ModeScore    = "score"    // the highest score wins (the default)
+	ModeAccuracy = "accuracy" // the highest completion percentage wins; score breaks a tie
+)
+
+// ModeMsg: the host sets the room's win condition (lobby only).
+type ModeMsg struct {
+	Mode string `json:"mode"`
+}
+
 type ReadyMsg struct {
 	Ready bool `json:"ready"`
 }
@@ -57,6 +69,8 @@ type PickMsg struct {
 	Difficulty int    `json:"difficulty"`
 	Edition    int    `json:"edition"`
 	Title      string `json:"title"`
+	// Force (start, host only): begin the round although some players are not ready. They get the song like the rest.
+	Force bool `json:"force,omitempty"`
 }
 
 type TitleMsg struct {
@@ -137,6 +151,7 @@ type RoomMsg struct {
 	HoverDiff  int          `json:"hoverDifficulty"`      // the chart selected for it, 0..3, -1 = unknown
 	HoverEd    int          `json:"hoverEdition"`         // 1 = the Extra chart, 0 = not, -1 = unknown
 	Focus      int          `json:"focus"`                // pv players report on with `have`: the hovered one, else the pick, -1 = none
+	Mode       string       `json:"mode,omitempty"`       // ModeAccuracy when the room ranks by accuracy; absent = ModeScore
 	Rounds     int          `json:"rounds,omitempty"`     // rounds finished with at least two players (what Wins counts out of)
 	Players    []PlayerInfo `json:"players"`
 }

@@ -79,7 +79,10 @@ struct State {
     int hoverDifficulty = -1; // the chart the host selected for it: 0..3, -1 = unknown
     int hoverEdition = -1;     // 1 = the Extra chart
     int focus = -1; // pv everyone reports on: the hovered one, else the pick
+    std::string mode = "score"; // how the room ranks players: "score" or "accuracy" (the completion percentage)
     int rounds = 0; // finished rounds with two or more players in this room (what Player::wins counts out of)
+    std::string toast;         // a short notice drawn over the game (blocked start, new host...), see ToastAt
+    uint32_t toastAt = 0;      // GetTickCount() when it was set (it shows for a few seconds)
     int countdown = 0;       // 3, 2, 1 while the round is being released, else 0
     uint32_t countdownAt = 0; // GetTickCount() when that number arrived
     std::vector<Player> players;
@@ -117,6 +120,7 @@ void SendChat(const std::string& text);
 void GiveHost(int playerId); // host only
 void Kick(int playerId);     // host only
 void DismissResults();
+void SetMode(const std::string& mode); // host only, lobby only: "score" or "accuracy"
 std::string ServerUrl();             // ws(s)://host:port/path of the current connection
 std::string AvatarUrl(int playerId); // custom avatar of a player on the current server (Player::hasAvatar)
 

@@ -52,6 +52,7 @@ type Room struct {
 	hoverDiff  int // the chart the host has selected for it, -1 = unknown
 	hoverEd    int
 
+	mode     string         // ModeScore or ModeAccuracy: what ranks players first
 	wins     map[string]int // rounds won by player name, kept while the room exists (names are unique in a room)
 	rounds   int            // finished rounds with at least two players
 	counting bool           // the 3-2-1 is running
@@ -62,7 +63,7 @@ type Room struct {
 }
 
 func newRoom(h *Hub, key, name string) *Room {
-	return &Room{hub: h, key: key, name: name, state: StateLobby, hover: -1, hoverDiff: -1, hoverEd: -1, wins: map[string]int{}}
+	return &Room{hub: h, key: key, name: name, state: StateLobby, hover: -1, hoverDiff: -1, hoverEd: -1, wins: map[string]int{}, mode: ModeScore}
 }
 
 func (r *Room) Empty() bool {
@@ -124,6 +125,9 @@ func (r *Room) snapshot() RoomMsg {
 	focus := r.focus()
 	msg := RoomMsg{Name: r.name, State: r.state, Host: r.host, Hover: r.hover, Focus: focus, Players: []PlayerInfo{},
 		HoverDiff: -1, HoverEd: -1, Rounds: r.rounds}
+	if r.mode == ModeAccuracy {
+		msg.Mode = ModeAccuracy
+	}
 	if r.hover >= 0 {
 		msg.HoverTitle = r.hoverTitle
 		msg.HoverDiff, msg.HoverEd = r.hoverDiff, r.hoverEd
@@ -397,6 +401,28 @@ func (r *Room) Handle(c *Client, env Envelope) {
 			r.broadcastState()
 		}
 
+	case "mode":
+		m, ok := decode[ModeMsg](c, env.Data)
+		if !ok {
+			return
+		}
+		switch {
+		case !isHost:
+			c.SendError("only the host can do that")
+		case r.state != StateLobby:
+			c.SendError("round in progress")
+		case m.Mode != ModeScore && m.Mode != ModeAccuracy:
+			c.SendError("unknown mode")
+		case m.Mode != r.mode:
+			r.mode = m.Mode
+			if m.Mode == ModeAccuracy {
+				r.system("%s: the highest accuracy wins", c.name)
+			} else {
+				r.system("%s: the highest score wins", c.name)
+			}
+			r.broadcastState()
+		}
+
 	case "have":
 		m, ok := decode[HaveMsg](c, env.Data)
 		if !ok {
@@ -446,6 +472,8 @@ func (r *Room) Handle(c *Client, env Envelope) {
 		if !ok {
 			return
 		}
+		force := m.Force
+		m.Force = false // not part of the pick that is stored and sent on
 		if m.Block != "" {
 			if err := r.validatePick(isHost, &m); err != "" {
 				c.SendError(err)
@@ -453,7 +481,7 @@ func (r *Room) Handle(c *Client, env Envelope) {
 			}
 			r.pick = &m
 		}
-		if err := r.startRound(isHost); err != "" {
+		if err := r.startRound(isHost, force); err != "" {
 			c.SendError(err)
 		}
 
@@ -534,7 +562,7 @@ func (r *Room) setPick(isHost bool, m PickMsg) string {
 	return ""
 }
 
-func (r *Room) startRound(isHost bool) string {
+func (r *Room) startRound(isHost, force bool) string {
 	if !isHost {
 		return "only the host can start"
 	}
@@ -546,7 +574,7 @@ func (r *Room) startRound(isHost bool) string {
 	}
 	// Players known not to have the song sit the round out (and aren't waited for).
 	for _, m := range r.members {
-		if m.c.id != r.host && !m.ready && !m.lacks(r.pick.PV) {
+		if !force && m.c.id != r.host && !m.ready && !m.lacks(r.pick.PV) {
 			return m.c.name + " is not ready"
 		}
 	}
@@ -562,7 +590,7 @@ func (r *Room) startRound(isHost bool) string {
 		m.live, m.result = Score{}, nil
 		m.lastScore = time.Time{}
 	}
-	log.Printf("room %q: round started, %s, %d players", r.name, describe(r.pick), len(r.members))
+	log.Printf("room %q: round started, %s, %d players%s", r.name, describe(r.pick), len(r.members), map[bool]string{true: " (forced)"}[force])
 	r.system("Round started: %s", describe(r.pick))
 	r.broadcast(encode("start", r.pick))
 	r.broadcastState()
@@ -637,7 +665,9 @@ func (r *Room) checkRoundOver() {
 			results = append(results, FinalResult{ID: m.c.id, Name: m.c.name, Result: *m.result})
 		}
 	}
-	sort.SliceStable(results, func(i, j int) bool { return results[i].Result.Score.Score > results[j].Result.Score.Score })
+	sort.SliceStable(results, func(i, j int) bool {
+		return r.ranksFirst(results[i].Result.Score, results[j].Result.Score)
+	})
 	for i := range results {
 		results[i].Place = i + 1
 	}
@@ -659,7 +689,7 @@ func (r *Room) checkRoundOver() {
 	}
 	log.Printf("room %q: round over", r.name)
 	if r.pick != nil {
-		r.hub.plays.Add(RoundRecord{Time: time.Now(), Room: r.name, Pick: *r.pick, Results: append([]FinalResult(nil), results...)})
+		r.hub.plays.Add(RoundRecord{Time: time.Now(), Room: r.name, Mode: r.mode, Pick: *r.pick, Results: append([]FinalResult(nil), results...)})
 	}
 	r.broadcast(encode("results", ResultsMsg{Players: results}))
 	r.broadcastState()
@@ -688,8 +718,20 @@ func (r *Room) liveScores() ScoresMsg {
 			out.Players = append(out.Players, ls)
 		}
 	}
-	sort.SliceStable(out.Players, func(i, j int) bool { return out.Players[i].Score > out.Players[j].Score })
+	sort.SliceStable(out.Players, func(i, j int) bool {
+		a, b := out.Players[i], out.Players[j]
+		return r.ranksFirst(Score{Score: a.Score, Completion: a.Completion}, Score{Score: b.Score, Completion: b.Completion})
+	})
 	return out
+}
+
+// ranksFirst reports whether score a ranks above score b in this room's mode: by score, or by accuracy (the
+// completion percentage) with the score as the tie-break.
+func (r *Room) ranksFirst(a, b Score) bool {
+	if r.mode == ModeAccuracy && a.Completion != b.Completion {
+		return a.Completion > b.Completion
+	}
+	return a.Score > b.Score
 }
 
 func (r *Room) startTicker() {

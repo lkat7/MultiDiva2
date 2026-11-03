@@ -28,7 +28,8 @@ type SpectatePlayer struct {
 	Host       bool    `json:"host,omitempty"`
 	Ready      bool    `json:"ready,omitempty"`
 	Away       bool    `json:"away,omitempty"`
-	Avatar     bool    `json:"avatar,omitempty"`
+	Avatar     bool    `json:"avatar,omitempty"`    // custom avatar at /avatar/<id>
+	AvatarURL  string  `json:"avatarUrl,omitempty"` // the player's Steam picture (an https address on Steam's image hosts)
 	Playing    bool    `json:"playing,omitempty"`
 	Score      int     `json:"score"`
 	Combo      int     `json:"combo"`
@@ -45,6 +46,7 @@ type SpectateRoom struct {
 	State   string           `json:"state"`
 	Pick    *PickInfo        `json:"pick,omitempty"`  // the song being played, or picked for the next round
 	Hover   string           `json:"hover,omitempty"` // lobby: the song the host is looking at
+	Mode    string           `json:"mode,omitempty"`  // "accuracy" when the room ranks by accuracy
 	Rounds  int              `json:"rounds,omitempty"`
 	Players []SpectatePlayer `json:"players"`
 	Last    *SpectateLast    `json:"last,omitempty"` // the previous round
@@ -67,7 +69,7 @@ func (r *Room) Spectate() (SpectateRoom, bool) {
 	if r.closed || len(r.members) == 0 {
 		return SpectateRoom{}, false
 	}
-	out := SpectateRoom{Name: r.name, State: r.state, Rounds: r.rounds, Players: []SpectatePlayer{}}
+	out := SpectateRoom{Name: r.name, State: r.state, Rounds: r.rounds, Mode: modeIfAccuracy(r.mode), Players: []SpectatePlayer{}}
 	if r.pick != nil {
 		out.Pick = &PickInfo{PV: r.pick.PV, Difficulty: r.pick.Difficulty, Edition: r.pick.Edition, Title: r.pick.Title}
 	}
@@ -85,7 +87,7 @@ func (r *Room) Spectate() (SpectateRoom, bool) {
 		out.Players = append(out.Players, SpectatePlayer{ID: m.c.id, Name: m.c.name, Host: m.c.id == r.host, Ready: m.ready,
 			Away: m.away, Avatar: m.c.hasAvatar, Playing: m.playing, Score: m.live.Score, Combo: m.live.Combo,
 			Completion: m.live.Completion, Finished: m.finished, Failed: m.result != nil && m.result.Failed,
-			Wins: r.wins[m.c.name], Lag: ls.Lag, Loading: ls.Loading})
+			Wins: r.wins[m.c.name], Lag: ls.Lag, Loading: ls.Loading, AvatarURL: r.hub.steamPics.URL(m.c.steam)})
 	}
 	// Playing players by score, the others after them in join order.
 	sort.SliceStable(out.Players, func(i, j int) bool {
@@ -93,7 +95,7 @@ func (r *Room) Spectate() (SpectateRoom, bool) {
 		if a.Playing != b.Playing {
 			return a.Playing
 		}
-		return a.Playing && a.Score > b.Score
+		return a.Playing && r.ranksFirst(Score{Score: a.Score, Completion: a.Completion}, Score{Score: b.Score, Completion: b.Completion})
 	})
 	if r.lastResults != nil {
 		out.Last = &SpectateLast{Pick: r.lastPick, Results: r.lastResults}
@@ -240,4 +242,11 @@ func (h *Hub) ServeSpectateWS(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+func modeIfAccuracy(mode string) string {
+	if mode == ModeAccuracy {
+		return ModeAccuracy
+	}
+	return ""
 }

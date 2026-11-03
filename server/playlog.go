@@ -21,6 +21,7 @@ type PlayLog struct {
 type RoundRecord struct {
 	Time    time.Time
 	Room    string
+	Mode    string // ModeScore or ModeAccuracy: what ranked the players
 	Pick    PickMsg
 	Results []FinalResult
 }
@@ -30,7 +31,11 @@ var gradeNames = []string{"Failed", "Cheap", "Standard", "Great", "Excellent", "
 // formatRound renders one round as a block of lines ending in a blank line.
 func formatRound(rec RoundRecord) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s | room %q | %s | pv=%d\n", rec.Time.Format("2006-01-02 15:04:05"), rec.Room, describe(&rec.Pick), rec.Pick.PV)
+	fmt.Fprintf(&b, "%s | room %q | %s | pv=%d", rec.Time.Format("2006-01-02 15:04:05"), rec.Room, describe(&rec.Pick), rec.Pick.PV)
+	if rec.Mode == ModeAccuracy {
+		b.WriteString(" | ranked by accuracy")
+	}
+	b.WriteString("\n")
 	if len(rec.Results) == 0 {
 		b.WriteString("  (no results)\n")
 	}

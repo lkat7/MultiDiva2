@@ -1,5 +1,37 @@
 # Changelog
 
+## 2.2.1-dev.4 (03.11.2026)
+- **Fixes the host stuck alone on the loading screen.** When the host's game launched a song while the connection was
+  down or very slow, the `start` message was lost but the loading hold was armed anyway, and nothing ever released it
+  (the release only ran for players the server had put in the round). Now: a launch while reconnecting plays solo at
+  once; a start the server doesn't confirm within 6 s releases the hold and plays solo; and a room update that says
+  the round is on counts as the confirmation if the echo was lost. A start that arrives after the host gave up is
+  counted as the host's play, so the room isn't left waiting for them.
+- **Adaptive live-score rate.** Scores go out at 10 Hz on a healthy link. When the socket can't keep up (messages pile
+  up in its outbox) the rate drops to 5 Hz and then 3 Hz, and climbs back after 4 calm seconds; no new score is queued
+  behind unsent ones. The log says `slow link ... live scores now N Hz`.
+- **Win by accuracy.** The host can set the room to rank by accuracy (the completion %) instead of score: a "Win by"
+  choice in the F8 options and in the full-screen settings (host, in the lobby). The server then orders the live
+  leaderboard, the results, the session wins and the play log by accuracy (score breaks a tie); the spectator page
+  shows the percentage as the big number. On the in-game leaderboard cards the score moves to the first line (dimmer)
+  and the second line shows accuracy: your own %, and with Score gaps on the others' gap to you in points (+1.39%).
+  New `mode` message and `mode` on the room (`docs/protocol.md`).
+- **Only the host starts, and only when everyone is ready.** In a room, song select's confirm button (the one that
+  starts a song, `0x140669B42`) is refused for everyone but the host, and for the host while a player isn't ready (a
+  player who lacks the song doesn't count). A notice is drawn over the game (it works with a controller, where the F8
+  window isn't on screen) and the game's "no" sound plays. The host presses confirm again within 5 seconds to start
+  anyway: the `start` message carries `force` and the server skips the ready check. Outside a room nothing is blocked.
+- **Ready follows song select:** a player who is ready and leaves song select for more than 1.5 s is unreadied
+  automatically (with a notice over the game), so the host isn't waiting on someone in a menu. Readying and unreadying
+  (by anyone in the room, not when a round starts or ends) plays the game's confirm / cancel sound.
+- **Host change:** when the host role passes to someone else, everyone in the lobby hears the game's item sound
+  (`se_ft_custom_item_01`) and sees "X is now the host" over the game. (The game has no named hit sounds to use; the
+  sound is one constant in `multiplayer.cpp` if you want another.)
+- **Steam pictures on the spectator page.** The page showed only custom avatars (`avatar.png`), because the Steam ones
+  are fetched by each player's game. The server now looks a Steam player's picture up once from Steam's public profile
+  feed (background lookup, cached for 12 h, a failed lookup is retried after 10 min) and gives the page only the
+  picture's address (an https address on Steam's own image hosts), never the Steam ID. A custom avatar still wins.
+
 ## 2.2.1-dev.3 (02.11.2026)
 - Fixes the crash when opening the full-screen multiplayer screens: they drew text with a font that was never set up
   (`sceneButton`, a null pointer) whenever the game's own font sheet wasn't available, which the logs show was always

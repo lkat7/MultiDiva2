@@ -6,6 +6,7 @@ import (
 	"github.com/coder/websocket"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -134,5 +135,64 @@ func TestSpectateWebSocket(t *testing.T) {
 			t.Fatal("sampling goroutine still running after the last page left")
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestSteamAvatarURLOnlyFromSteamHosts(t *testing.T) {
+	for raw, want := range map[string]bool{
+		"https://avatars.fastly.steamstatic.com/abc_medium.jpg": true,
+		"https://avatars.akamai.steamstatic.com/abc.jpg":        true,
+		"http://avatars.fastly.steamstatic.com/abc.jpg":         false, // not https
+		"https://evil.example/steamstatic.com/abc.jpg":          false,
+		"https://steamstatic.com.evil.example/abc.jpg":          false,
+		"https://user@avatars.fastly.steamstatic.com/abc.jpg":   false,
+		"javascript:alert(1)":                                   false,
+	} {
+		if _, ok := steamAvatarURL(raw); ok != want {
+			t.Errorf("steamAvatarURL(%q) = %v, want %v", raw, ok, want)
+		}
+	}
+}
+
+// The page gets a player's Steam picture address once the background lookup has finished, and never the Steam ID.
+func TestSpectateSteamAvatar(t *testing.T) {
+	url, hub := startServerHub(t)
+	var mu sync.Mutex
+	asked := map[string]int{}
+	hub.steamPics.fetch = func(id string) (string, error) {
+		mu.Lock()
+		asked[id]++
+		mu.Unlock()
+		return "https://avatars.fastly.steamstatic.com/pic_" + id + "_medium.jpg", nil
+	}
+	c := connectHello(t, url, HelloMsg{Name: "Steamy", Version: ProtocolVersion, Steam: "76561197960287930"})
+	c.send("join", JoinMsg{Room: "r"})
+	c.expectRoom(func(r RoomMsg) bool { return len(r.Players) == 1 })
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		m := hub.spectateList()
+		if got := m.Rooms[0].Players[0].AvatarURL; got != "" {
+			if got != "https://avatars.fastly.steamstatic.com/pic_76561197960287930_medium.jpg" {
+				t.Fatalf("avatar url = %q", got)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the Steam picture never arrived")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	raw, _ := json.Marshal(hub.spectateList())
+	if strings.Contains(string(raw), `"steam"`) {
+		t.Fatalf("the Steam ID is in the page data: %s", raw)
+	}
+	for i := 0; i < 5; i++ {
+		hub.spectateList() // cached: no further lookups
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if asked["76561197960287930"] != 1 {
+		t.Fatalf("looked up %d times, want 1", asked["76561197960287930"])
 	}
 }

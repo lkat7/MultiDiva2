@@ -54,7 +54,7 @@ Run the server with `-addr :3939`.
 The server also serves a read-only web page: open the server's address in a browser (`http://localhost:3939/`, or
 the public address you host on) to see every room, its players and the host's song, and a live leaderboard (score,
 combo, completion) while a round plays. It shows the same things the in-game room list and leaderboard show, never
-chat. The page updates live over a WebSocket (`/spectate-ws`); `GET /api/rooms` returns the same data as JSON once. Turn it off with `-spectate=false`.
+chat. Steam players' pictures are fetched from Steam's public profile feed (the server needs outbound HTTPS to steamcommunity.com; without it the page just shows no picture for them). The page updates live over a WebSocket (`/spectate-ws`); `GET /api/rooms` returns the same data as JSON once. Turn it off with `-spectate=false`.
 
 ## Testing alone
 

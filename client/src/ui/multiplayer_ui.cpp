@@ -460,7 +460,7 @@ static void DrawRoundStatus(const mp::State& s)
         if (ImGui::Checkbox("Ready", &ready))
             mp::SetReady(ready);
         ImGui::SameLine();
-        ImGui::TextColored(Dim, ready ? "Stay on song select: the song starts by itself." : "Tick when you're on song select.");
+        ImGui::TextColored(Dim, ready ? "Stay on song select: the song starts by itself." : "Tick when you're on song select; leaving it unreadies you.");
     }
 
     if (s.pick) {
@@ -632,6 +632,8 @@ static void DrawScreens(bool* open)
         view.showLeaderboard = cfg.showLeaderboard;
         view.showGaps = cfg.showGaps;
         view.browseSounds = cfg.browseSounds;
+        view.host = mp::IsHost() && s.roomState == "lobby";
+        view.accuracyMode = s.mode == "accuracy";
         // The plate follows the host's highlight in song select, else shows the last song played.
         view.songPv = s.hover >= 0 ? s.hover : s.pick ? s.pick->pv : -1;
         if (s.hover >= 0) {
@@ -696,6 +698,9 @@ static void DrawScreens(bool* open)
         case RoomAction::ToggleGaps:
             cfg.showGaps = !cfg.showGaps;
             SaveConfig();
+            break;
+        case RoomAction::ToggleMode:
+            mp::SetMode(s.mode == "accuracy" ? "score" : "accuracy");
             break;
         case RoomAction::ToggleBrowseSounds:
             cfg.browseSounds = !cfg.browseSounds;
@@ -886,6 +891,22 @@ void DrawLobby(bool* open)
             ImGui::SameLine();
             ImGui::TextColored(Dim, "A practice opponent that stays close to your score.");
         }
+        // How the room ranks players: the host picks (in the lobby), everyone sees it.
+        if (mp::IsHost() && s.roomState == "lobby") {
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted("Win by");
+            ImGui::SameLine();
+            if (ImGui::RadioButton("Score", s.mode != "accuracy"))
+                mp::SetMode("score");
+            ImGui::SameLine();
+            if (ImGui::RadioButton("Accuracy", s.mode == "accuracy"))
+                mp::SetMode("accuracy");
+            ImGui::SameLine();
+            ImGui::TextColored(Dim, s.mode == "accuracy" ? "The highest completion %% wins; score breaks a tie."
+                                                           : "The highest score wins.");
+        } else if (s.mode == "accuracy") {
+            ImGui::TextColored(Dim, "Ranked by accuracy: the highest completion %% wins.");
+        }
         if (ImGui::Checkbox("Live leaderboard", &cfg.showLeaderboard))
             SaveConfig();
         ImGui::SameLine();
@@ -1034,6 +1055,33 @@ static void DrawCountdown(const mp::State& s)
     dl->AddText(font, size, pos, ImGui::GetColorU32(ImVec4(0.22f, 0.77f, 0.73f, alpha)), text);
 }
 
+// A short notice over the game (a song start that was refused, a new host): visible with a controller too, where the
+// F8 window and its chat are not on screen.
+static void DrawToast(const mp::State& s)
+{
+    constexpr DWORD ShowMs = 4000;
+    if (s.toast.empty() || GetTickCount() - s.toastAt > ShowMs)
+        return;
+    const float age = (float)(GetTickCount() - s.toastAt);
+    const float alpha = age < ShowMs - 600 ? 1.0f : (ShowMs - age) / 600.0f; // fades out
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(vp->Pos.x + vp->Size.x * 0.5f, vp->Pos.y + vp->Size.y * 0.14f), ImGuiCond_Always,
+        ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowBgAlpha(0.85f * alpha);
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs
+        | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ImGui::GetFontSize() * 1.2f, ImGui::GetFontSize() * 0.7f));
+    if (ImGui::Begin("##toast", nullptr, flags)) {
+        ImFont* font = GetFonts().cardName ? GetFonts().cardName : ImGui::GetFont();
+        ImGui::PushFont(font);
+        ImGui::TextColored(Gold, "%s", s.toast.c_str());
+        ImGui::PopFont();
+    }
+    ImGui::End();
+    ImGui::PopStyleVar(2);
+}
+
 // The connection dropped while the screens weren't open (in a song, or F8 hidden): say so for a few seconds.
 static void DrawConnectionLost(const mp::State& s)
 {
@@ -1066,6 +1114,7 @@ void RequestGlyphs()
     glyphs::RequestText(s.roomName);
     if (s.pick)
         glyphs::RequestText(PickName(*s.pick));
+    glyphs::RequestText(s.toast);
     for (const mp::Player& p : s.players)
         glyphs::RequestText(p.name);
     for (const mp::LiveScore& p : s.scores)
@@ -1095,6 +1144,7 @@ void DrawRoundOverlays()
     if (s.showResults && !g_session.inSong)
         DrawResults(s);
     DrawConnectionLost(s);
+    DrawToast(s);
 }
 
 } // namespace md::ui

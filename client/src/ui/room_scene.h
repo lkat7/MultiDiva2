@@ -19,6 +19,8 @@ struct RoomView {
     bool ownOutfits = true;
     bool showLeaderboard = true, showGaps = true;
     bool browseSounds = true;
+    bool host = false;         // we are the host in the lobby: the settings offer the win condition
+    bool accuracyMode = false; // the room ranks by accuracy instead of score
     // The song on the title plate: the one the host has highlighted in song select (live), else the last pick.
     std::string songTitle;  // "" = none: `songHint` instead
     int songDifficulty = -1; // 0..4 (4 = Extra Extreme) for the chip, -1 = none (a highlight has no difficulty)
@@ -38,7 +40,7 @@ struct RoomView {
 unsigned int DifficultyColor(int difficulty);
 
 struct RoomAction {
-    enum Kind { None, ToggleReady, PickSong, Leave, GiveHost, Kick, Chat, ToggleBot, ToggleOutfits, ToggleLeaderboard, ToggleGaps, ToggleBrowseSounds,
+    enum Kind { None, ToggleReady, PickSong, Leave, GiveHost, Kick, Chat, ToggleBot, ToggleOutfits, ToggleLeaderboard, ToggleGaps, ToggleBrowseSounds, ToggleMode,
         CopyInvite } kind = None;
     int player = -1;  // GiveHost, Kick
     std::string text; // Chat
