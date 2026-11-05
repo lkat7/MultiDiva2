@@ -4,6 +4,6 @@ dll = ["MultiDiva.dll"]
 
 name = "MultiDiva2"
 description = "Online multiplayer for Project DIVA Mega Mix+"
-version = "2.2.1-dev.4"
-date = "02.11.2026"
+version = "2.2.2"
+date = "05.11.2026"
 author = "beru"

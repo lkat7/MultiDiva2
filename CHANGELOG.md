@@ -1,73 +1,51 @@
 # Changelog
 
-## 2.2.1-dev.4 (03.11.2026)
-- **Fixes the host stuck alone on the loading screen.** When the host's game launched a song while the connection was
-  down or very slow, the `start` message was lost but the loading hold was armed anyway, and nothing ever released it
-  (the release only ran for players the server had put in the round). Now: a launch while reconnecting plays solo at
-  once; a start the server doesn't confirm within 6 s releases the hold and plays solo; and a room update that says
-  the round is on counts as the confirmation if the echo was lost. A start that arrives after the host gave up is
-  counted as the host's play, so the room isn't left waiting for them.
-- **Adaptive live-score rate.** Scores go out at 10 Hz on a healthy link. When the socket can't keep up (messages pile
-  up in its outbox) the rate drops to 5 Hz and then 3 Hz, and climbs back after 4 calm seconds; no new score is queued
-  behind unsent ones. The log says `slow link ... live scores now N Hz`.
-- **Win by accuracy.** The host can set the room to rank by accuracy (the completion %) instead of score: a "Win by"
-  choice in the F8 options and in the full-screen settings (host, in the lobby). The server then orders the live
-  leaderboard, the results, the session wins and the play log by accuracy (score breaks a tie); the spectator page
-  shows the percentage as the big number. On the in-game leaderboard cards the score moves to the first line (dimmer)
-  and the second line shows accuracy: your own %, and with Score gaps on the others' gap to you in points (+1.39%).
-  New `mode` message and `mode` on the room (`docs/protocol.md`).
-- **Only the host starts, and only when everyone is ready.** In a room, song select's confirm button (the one that
-  starts a song, `0x140669B42`) is refused for everyone but the host, and for the host while a player isn't ready (a
-  player who lacks the song doesn't count). A notice is drawn over the game (it works with a controller, where the F8
-  window isn't on screen) and the game's "no" sound plays. The host presses confirm again within 5 seconds to start
-  anyway: the `start` message carries `force` and the server skips the ready check. Outside a room nothing is blocked.
-- **Ready follows song select:** a player who is ready and leaves song select for more than 1.5 s is unreadied
-  automatically (with a notice over the game), so the host isn't waiting on someone in a menu. Readying and unreadying
-  (by anyone in the room, not when a round starts or ends) plays the game's confirm / cancel sound.
-- **Host change:** when the host role passes to someone else, everyone in the lobby hears the game's item sound
-  (`se_ft_custom_item_01`) and sees "X is now the host" over the game. (The game has no named hit sounds to use; the
-  sound is one constant in `multiplayer.cpp` if you want another.)
-- **Steam pictures on the spectator page.** The page showed only custom avatars (`avatar.png`), because the Steam ones
-  are fetched by each player's game. The server now looks a Steam player's picture up once from Steam's public profile
-  feed (background lookup, cached for 12 h, a failed lookup is retried after 10 min) and gives the page only the
-  picture's address (an https address on Steam's own image hosts), never the Steam ID. A custom avatar still wins.
+## 2.2.2 (05.11.2026)
 
-## 2.2.1-dev.3 (02.11.2026)
-- Fixes the crash when opening the full-screen multiplayer screens: they drew text with a font that was never set up
-  (`sceneButton`, a null pointer) whenever the game's own font sheet wasn't available, which the logs show was always
-  the case. The screens now fall back to the overlay font and log `screens: the game's font isn't available yet`.
-- Your own leaderboard card is 5% wider than the others (was 15%), and the BPM now follows the song title in the F8
-  window.
+### Added
+- **Spectator page.** The server serves a live web page at its own address: every room with its state, players (Steam
+  pictures or custom avatars), the song, a live leaderboard while a round plays, the previous round's ranking, wins and
+  LAG / loading marks. It updates over a WebSocket (`/spectate-ws`), never shows chat, and `GET /api/rooms` gives the
+  same data as JSON. `-spectate=false` turns it off. The server looks Steam pictures up from Steam's public profile
+  feed (cached) and gives the page only the picture's address, never the Steam ID. See `docs/hosting.md`.
+- **Only the host starts, and only when everyone is ready.** In a room, song select's confirm button is refused for
+  everyone but the host, and for the host while a player isn't ready (players who lack the song don't count), with a
+  notice over the game and the game's "no" sound (it works with a controller). The host presses confirm again within
+  5 seconds to start anyway. Outside a room nothing is blocked.
+- **3-2-1 countdown.** Once everyone has loaded the server sends 3, 2, 1 half a second apart, drawn large and sharp
+  over the loading screen, and then `go`. The **Countdown sound** setting (on by default, in Ctrl+F8) plays the game's
+  cursor sound on 3 and 2 and its enter sound on 1.
+- **Session wins.** The server counts the rounds each player wins in a room (two or more players, won by someone who
+  didn't fail), shown as "2 wins" in the F8 list and the full-screen room.
+- **Win by accuracy.** The host can rank the room by accuracy (the completion %) instead of score ("Win by" in the F8
+  options and the full-screen settings). The live leaderboard, the results, the wins and the play log follow it.
+- **Live leaderboard.** Narrower, with the accuracy % on each card. Your own card is 5% wider, brighter and outlined.
+  With **Score gaps** (now on by default) the others show how far ahead (+) or behind (-) of you they are, in score or
+  in accuracy points, instead of their whole score. A player whose updates stopped for 2 s shows a **LAG** chip and a
+  dimmed card, one still on the loading screen shows **loading** (the board is shown while waiting for the others), and
+  "no updates from the server" shows if the scoreboard messages stop reaching you.
+- **Chart chips** in the F8 window: the host's highlighted song lists its charts as muted difficulty-coloured chips, the
+  host's selected chart filled and outlined, with the BPM after the title.
+- **Sounds.** Guests in the lobby hear the game's cursor and difficulty-change sounds when the host browses song select
+  (**Browse sounds**, on by default), a confirm / cancel sound when someone readies or unreadies, and a sound and a
+  notice over the game when the host changes.
+- **Ready follows song select:** a ready player who leaves song select for more than 1.5 s is unreadied
+  automatically, so the host isn't waiting on someone in a menu.
 
-## 2.2.1-dev.2 (02.11.2026)
-- **Session scoreboard:** the server counts the rounds each player wins in a room (rounds with two or more players, won
-  by someone who didn't fail). The F8 player list and the full-screen room show "2 wins" next to the player, and the
-  spectator page shows it too. It's kept while the room exists, by player name.
-- **3-2-1 countdown:** once everyone has loaded, the server sends 3, 2, 1 half a second apart (1.5 s in all), the
-  number is drawn large and sharp (its own digit font, baked at the drawn size) over the loading screen, and `go` follows. The **Countdown sound** setting (on by default, in
-  Ctrl+F8) plays the game's sounds: the song cursor sound on 3 and 2, the enter sound on 1. Older clients ignore
-  the countdown and start 1.5 s later.
-- **Live leaderboard:** narrower (20% less width, so it covers less of the notes), (the accuracy % stays). A player whose score updates stopped for more than 2 s (slow game, stall, lost connection) shows
-  a **LAG** chip and a dimmed card, and a player still on the loading screen shows **loading** (the board is now also
-  shown while waiting for the others). With **Score gaps** on (now the default for new installs) the other players show
-  how far ahead (+, red) or behind (-, teal) they are of you instead of their whole score; your card keeps your score, is 5% wider and brighter, and has a teal outline.
-  If *our* scoreboard messages stop for 2 s, "no updates from the server" shows
-  below the board.
-- **Chart chips** (the BPM now follows the song title): in the F8 window the host's highlighted song lists its charts as rounded chips in the difficulty
-  colours, muted. The chart the host selected is filled and outlined, the others are faint grey (all softly tinted
-  while the selection is unknown).
-- **Browse sounds:** when the host moves the song cursor or changes the difficulty in song select, guests in the lobby
-  hear the game's own sounds for it (`se_ft_music_selector_select_01` and `..._difficulty_change_01`). Option
-  **Browse sounds** (on by default) in the F8 options and the full-screen settings.
-- Server: `scores` gains `loading` and `lag`, players gain `wins`, the room gains `rounds`, and there is a new
-  `countdown` message (`docs/protocol.md`). The spectator page shows wins, "lagging" and "loading".
+### Fixed
+- **Host stuck alone on the loading screen.** When the host's game launched a song while the connection was down or
+  very slow, the `start` message was lost but the loading hold was still armed and nothing released it. Now a launch
+  while reconnecting plays solo at once, a start the server doesn't confirm within 6 s releases the hold, and a room
+  update saying the round is on counts as the confirmation if the echo was lost. A start that arrives after the host
+  gave up is counted as the host's play, so the room isn't left waiting.
+- **Crash when opening the full-screen multiplayer screens:** they drew text with a font that was never set up (a null
+  pointer) whenever the game's own font sheet wasn't available. They now fall back to the overlay font.
+- **Live scores on a bad connection:** scores go out at 10 Hz on a healthy link; when the socket backs up the rate drops
+  to 5 and then 3 per second and recovers after 4 calm seconds, and no score is queued behind unsent ones.
 
-## 2.2.1-dev.1 (02.11.2026)
-- Server: a spectator web page at the server's address (`/`): every room with its state, players and song, a live
-  leaderboard while a round plays (score, combo, completion bar, finished/failed) and the previous round's ranking.
-  The page listens on a WebSocket (`/spectate-ws`): the server pushes a snapshot only when something changed, and
-  stops sampling when no page is open. Read-only, no chat. `GET /api/rooms` gives the same data as JSON once;
-  `-spectate=false` turns it all off. See `docs/hosting.md`.
+### Server
+- New messages and fields (all additive, the protocol version stays 1): `countdown`, `mode`, `start.force`, `wins`,
+  `rounds` and `mode` on the room, `loading` and `lag` on `scores`. Details in `docs/protocol.md`.
 
 ## 2.2.1 (02.11.2026)
 
