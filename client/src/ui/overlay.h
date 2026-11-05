@@ -25,8 +25,10 @@ struct Fonts {
     ImFont* exoMedium = nullptr;
     ImFont* exoLarge = nullptr;
     ImFont* exoXL = nullptr;
+    ImFont* countdown = nullptr; // the 3-2-1: digits only, baked at CountdownFontPx so the big numbers stay sharp
 };
 const Fonts& GetFonts();
+float CountdownFontPx(float screenHeight);
 ID3D11Device* GetDevice(); // the game's device, null before D3DInit
 
 } // namespace md::ui

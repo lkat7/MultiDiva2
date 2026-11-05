@@ -140,9 +140,11 @@ static ID3D11ShaderResourceView* CustomAvatar(const std::string& url)
 
 ID3D11ShaderResourceView* PlayerAvatar(const mp::Player& p)
 {
-    ID3D11ShaderResourceView* tex = Avatar(p.steamId);
-    if (!tex && p.hasAvatar)
-        tex = CustomAvatar(mp::AvatarUrl(p.id));
+    // A picture the player supplied (avatar.png) wins over their Steam one; the Steam picture covers the moment before
+    // it has downloaded, and players without one.
+    ID3D11ShaderResourceView* tex = p.hasAvatar ? CustomAvatar(mp::AvatarUrl(p.id)) : nullptr;
+    if (!tex)
+        tex = Avatar(p.steamId);
     return tex;
 }
 

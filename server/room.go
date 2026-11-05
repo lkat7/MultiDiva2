@@ -17,15 +17,18 @@ const (
 )
 
 type member struct {
-	c        *Client
-	ready    bool
-	playing  bool // part of the current round
-	finished bool
-	loaded   bool // reached the loading barrier this round
-	live     Score
-	result   *Result
-	havePV   int // last `have` report: song id and whether this player has it (-1 = none yet)
-	haveOK   bool
+	c         *Client
+	ready     bool
+	playing   bool // part of the current round
+	finished  bool
+	loaded    bool // reached the loading barrier this round
+	live      Score
+	lastScore time.Time // when the last live score arrived this round (zero = none yet)
+	result    *Result
+	havePV    int // last `have` report: song id and whether this player has it (-1 = none yet)
+	haveOK    bool
+	away      bool        // connection lost; the slot is held until `expiry` fires or the player resumes
+	expiry    *time.Timer // set while away
 }
 
 // Room holds one lobby. Every method takes the room lock; Client.Send never blocks,
@@ -46,10 +49,21 @@ type Room struct {
 	goSent     bool // the loading barrier was released this round
 	hover      int  // pv the host has highlighted, -1 = none (lobby only)
 	hoverTitle string
+	hoverDiff  int // the chart the host has selected for it, -1 = unknown
+	hoverEd    int
+
+	mode     string         // ModeScore or ModeAccuracy: what ranks players first
+	wins     map[string]int // rounds won by player name, kept while the room exists (names are unique in a room)
+	rounds   int            // finished rounds with at least two players
+	counting bool           // the 3-2-1 is running
+	goAt     time.Time      // when `go` was sent this round
+
+	lastResults []FinalResult // the previous round's ranking and what was played, for the spectator page
+	lastPick    *PickInfo
 }
 
 func newRoom(h *Hub, key, name string) *Room {
-	return &Room{hub: h, key: key, name: name, state: StateLobby, hover: -1}
+	return &Room{hub: h, key: key, name: name, state: StateLobby, hover: -1, hoverDiff: -1, hoverEd: -1, wins: map[string]int{}, mode: ModeScore}
 }
 
 func (r *Room) Empty() bool {
@@ -109,16 +123,22 @@ func (m *member) lacks(pv int) bool { return pv >= 0 && m.havePV == pv && !m.hav
 
 func (r *Room) snapshot() RoomMsg {
 	focus := r.focus()
-	msg := RoomMsg{Name: r.name, State: r.state, Host: r.host, Hover: r.hover, Focus: focus, Players: []PlayerInfo{}}
+	msg := RoomMsg{Name: r.name, State: r.state, Host: r.host, Hover: r.hover, Focus: focus, Players: []PlayerInfo{},
+		HoverDiff: -1, HoverEd: -1, Rounds: r.rounds}
+	if r.mode == ModeAccuracy {
+		msg.Mode = ModeAccuracy
+	}
 	if r.hover >= 0 {
 		msg.HoverTitle = r.hoverTitle
+		msg.HoverDiff, msg.HoverEd = r.hoverDiff, r.hoverEd
 	}
 	if r.pick != nil {
 		msg.Pick = &PickInfo{PV: r.pick.PV, Difficulty: r.pick.Difficulty, Edition: r.pick.Edition, Title: r.pick.Title}
 	}
 	for _, m := range r.members {
 		msg.Players = append(msg.Players, PlayerInfo{ID: m.c.id, Name: m.c.name, Ready: m.ready, Playing: m.playing,
-			Loaded: m.loaded, Steam: m.c.steam, Avatar: m.c.hasAvatar, Missing: m.lacks(focus)})
+			Loaded: m.loaded, Steam: m.c.steam, Avatar: m.c.hasAvatar, Missing: m.lacks(focus), Away: m.away,
+			Wins: r.wins[m.c.name]})
 	}
 	return msg
 }
@@ -144,6 +164,15 @@ func (r *Room) Join(c *Client) {
 		c.SendError(fmt.Sprintf("room %q is full (%d players)", r.name, MaxPlayers))
 		r.hub.enterLobby(c) // back to the room list
 		return
+	}
+	// A same-name player whose connection dropped is most likely this one without a resume token (older client):
+	// free the name instead of numbering around them.
+	for _, m := range append([]*member(nil), r.members...) {
+		if m.away && strings.EqualFold(m.c.baseName, c.baseName) {
+			r.remove(m.c, "timed out")
+			r.hub.setAvatar(m.c.id, nil)
+			r.hub.dropSession(m.c)
+		}
 	}
 	c.name = r.uniqueName(c.baseName)
 	r.members = append(r.members, &member{c: c, havePV: -1})
@@ -176,6 +205,86 @@ func (r *Room) uniqueName(base string) string {
 	}
 }
 
+// Detach keeps c's slot for a resume after its connection dropped, and gives up the host role if it had it. It
+// reports false if c isn't a member (nothing to hold). After hub.resumeGrace the slot is freed as if c had left.
+func (r *Room) Detach(c *Client) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	m := r.find(c)
+	if m == nil || r.closed {
+		return false
+	}
+	m.away = true
+	log.Printf("room %q: %s lost connection (%d players)", r.name, c.name, len(r.members))
+	r.system("%s lost connection", c.name)
+	if r.host == c.id {
+		r.passHost(c)
+	}
+	m.expiry = time.AfterFunc(r.hub.grace(), func() { r.expire(m) })
+	r.broadcastState()
+	return true
+}
+
+// passHost gives the host role to the first connected member other than `from` (nobody if they are all away).
+func (r *Room) passHost(from *Client) {
+	for _, m := range r.members {
+		if m.c != from && !m.away {
+			r.host = m.c.id
+			r.hover = -1 // the new host's game reports its own highlight
+			r.system("%s is now the host", m.c.name)
+			return
+		}
+	}
+}
+
+// expire frees the slot of a player who didn't come back.
+func (r *Room) expire(m *member) {
+	r.mu.Lock()
+	if !m.away || r.find(m.c) != m {
+		r.mu.Unlock()
+		return // resumed, or already removed
+	}
+	c := m.c
+	removed := r.remove(c, "timed out")
+	empty := len(r.members) == 0
+	r.mu.Unlock()
+
+	r.hub.setAvatar(c.id, nil)
+	r.hub.dropSession(c)
+	if removed && empty {
+		r.hub.removeIfEmpty(r)
+	}
+}
+
+// Resume puts new connection c in the place of old, a member who dropped (or whose connection is half dead): same id
+// and name, round state kept. It sends c its welcome and the room. False if old isn't a member of this room.
+func (r *Room) Resume(old, c *Client) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	m := r.find(old)
+	if m == nil || r.closed {
+		return false
+	}
+	if m.expiry != nil {
+		m.expiry.Stop()
+		m.expiry = nil
+	}
+	m.away = false
+	m.c = c
+	c.id, c.name, c.baseName = old.id, old.name, old.baseName
+	old.superseded.Store(true)
+	go old.conn.CloseNow()
+
+	log.Printf("room %q: %s resumed (%d players)", r.name, c.name, len(r.members))
+	c.Send(encode("welcome", WelcomeMsg{ID: c.id, Version: ProtocolVersion, Token: old.token, Server: ServerVersion}))
+	r.system("%s reconnected", c.name)
+	r.broadcastState()
+	if r.state == StatePlaying && r.goSent && m.playing && !m.finished {
+		c.Send(encode("go", struct{}{})) // the barrier was released while they were away
+	}
+	return true
+}
+
 func (r *Room) Leave(c *Client) {
 	r.mu.Lock()
 	removed := r.remove(c, "left")
@@ -205,15 +314,19 @@ func (r *Room) remove(c *Client, how string) bool {
 	if idx < 0 {
 		return false
 	}
+	if e := r.members[idx].expiry; e != nil {
+		e.Stop()
+	}
 	r.members = append(r.members[:idx], r.members[idx+1:]...)
 	log.Printf("room %q: %s %s (%d players)", r.name, c.name, how, len(r.members))
 
 	if len(r.members) > 0 {
 		r.system("%s %s", c.name, how)
 		if r.host == c.id {
-			r.host = r.members[0].c.id
-			r.hover = -1 // the new host's game reports its own highlight
-			r.system("%s is now the host", r.members[0].c.name)
+			r.passHost(c)
+			if r.host == c.id { // everyone left is away: still better than a host who is gone
+				r.host = r.members[0].c.id
+			}
 		}
 		if r.state == StatePlaying {
 			r.checkAllLoaded()
@@ -276,8 +389,37 @@ func (r *Room) Handle(c *Client, env Envelope) {
 			m.PV = -1
 		}
 		title := cleanText(m.Title, MaxTitleLen)
-		if m.PV != r.hover || title != r.hoverTitle {
-			r.hover, r.hoverTitle = m.PV, title
+		diff, ed := -1, -1
+		if m.Difficulty != nil && *m.Difficulty >= 0 && *m.Difficulty <= 4 {
+			diff, ed = *m.Difficulty, 0
+			if m.Edition != nil && (*m.Edition == 0 || *m.Edition == 1) {
+				ed = *m.Edition
+			}
+		}
+		if m.PV != r.hover || title != r.hoverTitle || diff != r.hoverDiff || ed != r.hoverEd {
+			r.hover, r.hoverTitle, r.hoverDiff, r.hoverEd = m.PV, title, diff, ed
+			r.broadcastState()
+		}
+
+	case "mode":
+		m, ok := decode[ModeMsg](c, env.Data)
+		if !ok {
+			return
+		}
+		switch {
+		case !isHost:
+			c.SendError("only the host can do that")
+		case r.state != StateLobby:
+			c.SendError("round in progress")
+		case m.Mode != ModeScore && m.Mode != ModeAccuracy:
+			c.SendError("unknown mode")
+		case m.Mode != r.mode:
+			r.mode = m.Mode
+			if m.Mode == ModeAccuracy {
+				r.system("%s: the highest accuracy wins", c.name)
+			} else {
+				r.system("%s: the highest score wins", c.name)
+			}
 			r.broadcastState()
 		}
 
@@ -330,6 +472,8 @@ func (r *Room) Handle(c *Client, env Envelope) {
 		if !ok {
 			return
 		}
+		force := m.Force
+		m.Force = false // not part of the pick that is stored and sent on
 		if m.Block != "" {
 			if err := r.validatePick(isHost, &m); err != "" {
 				c.SendError(err)
@@ -337,7 +481,7 @@ func (r *Room) Handle(c *Client, env Envelope) {
 			}
 			r.pick = &m
 		}
-		if err := r.startRound(isHost); err != "" {
+		if err := r.startRound(isHost, force); err != "" {
 			c.SendError(err)
 		}
 
@@ -369,6 +513,7 @@ func (r *Room) Handle(c *Client, env Envelope) {
 		}
 		if r.state == StatePlaying && me.playing && !me.finished {
 			me.live = m
+			me.lastScore = time.Now()
 		}
 
 	case "finish":
@@ -417,7 +562,7 @@ func (r *Room) setPick(isHost bool, m PickMsg) string {
 	return ""
 }
 
-func (r *Room) startRound(isHost bool) string {
+func (r *Room) startRound(isHost, force bool) string {
 	if !isHost {
 		return "only the host can start"
 	}
@@ -429,7 +574,7 @@ func (r *Room) startRound(isHost bool) string {
 	}
 	// Players known not to have the song sit the round out (and aren't waited for).
 	for _, m := range r.members {
-		if m.c.id != r.host && !m.ready && !m.lacks(r.pick.PV) {
+		if !force && m.c.id != r.host && !m.ready && !m.lacks(r.pick.PV) {
 			return m.c.name + " is not ready"
 		}
 	}
@@ -437,12 +582,15 @@ func (r *Room) startRound(isHost bool) string {
 	r.state = StatePlaying
 	r.round++
 	r.goSent = false
+	r.counting = false
+	r.goAt = time.Time{}
 	r.hover = -1
 	for _, m := range r.members {
 		m.playing, m.finished, m.ready, m.loaded = !m.lacks(r.pick.PV), false, false, false
 		m.live, m.result = Score{}, nil
+		m.lastScore = time.Time{}
 	}
-	log.Printf("room %q: round started, %s, %d players", r.name, describe(r.pick), len(r.members))
+	log.Printf("room %q: round started, %s, %d players%s", r.name, describe(r.pick), len(r.members), map[bool]string{true: " (forced)"}[force])
 	r.system("Round started: %s", describe(r.pick))
 	r.broadcast(encode("start", r.pick))
 	r.broadcastState()
@@ -453,7 +601,7 @@ func (r *Room) startRound(isHost bool) string {
 	time.AfterFunc(r.hub.loadTimeout, func() {
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		if r.round == round && r.state == StatePlaying && !r.goSent {
+		if r.round == round && r.state == StatePlaying && !r.goSent && !r.counting {
 			log.Printf("room %q: loading timeout, starting without everyone", r.name)
 			r.system("Not everyone finished loading, starting anyway")
 			r.sendGo()
@@ -464,7 +612,7 @@ func (r *Room) startRound(isHost bool) string {
 
 // checkAllLoaded releases the loading barrier once every player still in the round has loaded.
 func (r *Room) checkAllLoaded() {
-	if r.goSent || r.state != StatePlaying {
+	if r.goSent || r.counting || r.state != StatePlaying {
 		return
 	}
 	for _, m := range r.members {
@@ -475,10 +623,33 @@ func (r *Room) checkAllLoaded() {
 	r.sendGo()
 }
 
+// sendGo starts the 3-2-1: the numbers go out one countStep apart and `go` follows one step after the 1 (clients
+// that don't know the countdown message just start a moment later).
 func (r *Room) sendGo() {
-	r.goSent = true
-	log.Printf("room %q: everyone loaded, go", r.name)
-	r.broadcast(encode("go", struct{}{}))
+	if r.goSent || r.counting {
+		return
+	}
+	r.counting = true
+	log.Printf("room %q: everyone loaded, counting down", r.name)
+	step, round := r.hub.countStep, r.round
+	later := func(delay time.Duration, f func()) {
+		time.AfterFunc(delay, func() {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			if r.closed || r.round != round || r.state != StatePlaying || r.goSent {
+				return // the round ended or restarted meanwhile
+			}
+			f()
+		})
+	}
+	r.broadcast(encode("countdown", CountdownMsg{N: 3}))
+	later(step, func() { r.broadcast(encode("countdown", CountdownMsg{N: 2})) })
+	later(2*step, func() { r.broadcast(encode("countdown", CountdownMsg{N: 1})) })
+	later(3*step, func() {
+		r.goSent, r.counting, r.goAt = true, false, time.Now()
+		log.Printf("room %q: go", r.name)
+		r.broadcast(encode("go", struct{}{}))
+	})
 }
 
 func (r *Room) checkRoundOver() {
@@ -494,33 +665,73 @@ func (r *Room) checkRoundOver() {
 			results = append(results, FinalResult{ID: m.c.id, Name: m.c.name, Result: *m.result})
 		}
 	}
-	sort.SliceStable(results, func(i, j int) bool { return results[i].Result.Score.Score > results[j].Result.Score.Score })
+	sort.SliceStable(results, func(i, j int) bool {
+		return r.ranksFirst(results[i].Result.Score, results[j].Result.Score)
+	})
 	for i := range results {
 		results[i].Place = i + 1
 	}
 
 	r.stopTicker()
 	r.state = StateLobby
+	if len(results) >= 2 { // a win needs someone to beat
+		r.rounds++
+		if !results[0].Result.Failed {
+			r.wins[results[0].Name]++
+		}
+	}
+	r.lastResults = append([]FinalResult(nil), results...)
+	if r.pick != nil {
+		r.lastPick = &PickInfo{PV: r.pick.PV, Difficulty: r.pick.Difficulty, Edition: r.pick.Edition, Title: r.pick.Title}
+	}
 	for _, m := range r.members {
 		m.playing, m.finished = false, false
 	}
 	log.Printf("room %q: round over", r.name)
+	if r.pick != nil {
+		r.hub.plays.Add(RoundRecord{Time: time.Now(), Room: r.name, Mode: r.mode, Pick: *r.pick, Results: append([]FinalResult(nil), results...)})
+	}
 	r.broadcast(encode("results", ResultsMsg{Players: results}))
 	r.broadcastState()
 }
 
 func (r *Room) liveScores() ScoresMsg {
 	out := ScoresMsg{Players: []LiveScore{}}
+	now := time.Now()
 	for _, m := range r.members {
 		if m.playing {
-			out.Players = append(out.Players, LiveScore{
+			ls := LiveScore{
 				ID: m.c.id, Name: m.c.name, Score: m.live.Score, Combo: m.live.Combo,
 				Completion: m.live.Completion, Finished: m.finished, Failed: m.result != nil && m.result.Failed,
-			})
+			}
+			if !m.finished {
+				if !r.goSent {
+					ls.Loading = !m.loaded
+				} else {
+					since := m.lastScore
+					if since.IsZero() || since.Before(r.goAt) {
+						since = r.goAt
+					}
+					ls.Lag = m.away || now.Sub(since) > r.hub.lagAfter
+				}
+			}
+			out.Players = append(out.Players, ls)
 		}
 	}
-	sort.SliceStable(out.Players, func(i, j int) bool { return out.Players[i].Score > out.Players[j].Score })
+	sort.SliceStable(out.Players, func(i, j int) bool {
+		a, b := out.Players[i], out.Players[j]
+		return r.ranksFirst(Score{Score: a.Score, Completion: a.Completion}, Score{Score: b.Score, Completion: b.Completion})
+	})
 	return out
+}
+
+// ranksFirst reports whether score a ranks above score b in this room's mode: by score, or by accuracy (the
+// completion percentage) with the score as the tie-break.
+func (r *Room) ranksFirst(a, b Score) bool {
+	if r.mode == ModeAccuracy && a.Completion != b.Completion {
+		return a.Completion > b.Completion
+	}
+	return a.Score > b.Score
 }
 
 func (r *Room) startTicker() {

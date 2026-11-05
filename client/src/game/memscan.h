@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 // Research tool: searches the game's readable memory for a byte pattern (e.g. to find loaded sprite sets).
@@ -17,5 +18,9 @@ void ListSpriteSets();
 
 // Ctrl+F8 research button: looks for the game's parsed font glyph tables (fontmap.bin) and who holds them.
 void FindFontMap();
+
+// Ctrl+F8 research button: logs where `text` is in the game's memory, as UTF-8 and as UTF-16, with the bytes around
+// each hit and its offset from the game exe (to find the player profile's name and the struct around it).
+void FindText(const std::string& text);
 
 } // namespace md::memscan

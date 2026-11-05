@@ -52,6 +52,7 @@ add_library(MultiDiva SHARED
     client/src/ui/leaderboard.cpp
     client/src/ui/multiplayer_ui.cpp
     client/src/ui/overlay.cpp
+    client/src/ui/own_avatar.cpp
     client/src/ui/pause_hint.cpp
     client/src/ui/room_scene.cpp
     client/src/ui/texture.cpp

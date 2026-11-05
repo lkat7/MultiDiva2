@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"log"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -18,18 +21,32 @@ const (
 	readLimit    = 64 << 10 // a hello with an avatar is ~44 KB
 )
 
+// A WebSocket ping every Hub.probeInterval; no pong within Hub.probeTimeout means the peer is gone (a phone that
+// dropped off the network sends no close, and the TCP connection can look healthy for minutes).
+
 // Client is one connected player. Only its own read goroutine mutates name/room;
 // rooms read them under the room lock.
 type Client struct {
-	id        int
-	name      string // shown in the current room: baseName, numbered if someone there has it too
-	baseName  string // from hello
-	steam     string // Steam ID (digits only) or empty
-	hasAvatar bool   // a custom avatar is served at /avatar/<id>
-	hub       *Hub
-	conn      *websocket.Conn
-	send      chan []byte
-	room      *Room
+	id         int
+	name       string // shown in the current room: baseName, numbered if someone there has it too
+	baseName   string // from hello
+	steam      string // Steam ID (digits only) or empty
+	hasAvatar  bool   // a custom avatar is served at /avatar/<id>
+	hub        *Hub
+	conn       *websocket.Conn
+	send       chan []byte
+	room       *Room
+	token      string      // identifies this session for a resume after a dropped connection
+	resumable  bool        // the client said it resumes (HelloMsg.Resumable)
+	superseded atomic.Bool // a newer connection took over this one's place
+}
+
+func newToken() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+	return hex.EncodeToString(b)
 }
 
 // Send queues a message. A client that can't keep up is disconnected instead of
@@ -70,12 +87,35 @@ func (c *Client) writeLoop(ctx context.Context) {
 	}
 }
 
-func (c *Client) readLoop(ctx context.Context) {
+// probeLoop closes a connection whose peer stops answering pings, so the usual disconnect handling runs.
+func (c *Client) probeLoop(ctx context.Context) {
+	interval, timeout := c.hub.probing()
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		pctx, cancel := context.WithTimeout(ctx, timeout)
+		err := c.conn.Ping(pctx)
+		cancel()
+		if err != nil && ctx.Err() == nil {
+			log.Printf("no answer to ping, dropping connection")
+			c.conn.CloseNow() // no close handshake: the peer isn't there
+			return
+		}
+	}
+}
+
+// readLoop returns why the connection ended.
+func (c *Client) readLoop(ctx context.Context) error {
 	c.conn.SetReadLimit(readLimit)
 	for {
 		typ, data, err := c.conn.Read(ctx)
 		if err != nil {
-			return
+			return err
 		}
 		if typ != websocket.MessageText {
 			continue
@@ -148,19 +188,28 @@ func (c *Client) handle(env Envelope) {
 			c.SendError("name required")
 			return
 		}
-		c.name, c.baseName = name, name
+		if c.room == nil {
+			c.name = name
+		}
+		c.baseName = name
+		c.resumable = m.Resumable
 		c.steam = ""
 		if isSteamID(m.Steam) {
 			c.steam = m.Steam
 		}
 		a, ok := parseAvatar(m.Avatar)
 		c.hasAvatar = ok
+		// A reconnecting player takes over their old slot (same id, name and round state).
+		resumed := m.Resume != "" && c.room == nil && c.hub.resume(c, m.Resume)
 		if ok {
 			c.hub.setAvatar(c.id, &a)
 		} else {
 			c.hub.setAvatar(c.id, nil)
 		}
-		c.Send(encode("welcome", WelcomeMsg{ID: c.id, Version: ProtocolVersion}))
+		if resumed {
+			return // the welcome and the room went out with the takeover
+		}
+		c.Send(encode("welcome", WelcomeMsg{ID: c.id, Version: ProtocolVersion, Token: c.token, Server: ServerVersion}))
 		if c.room == nil {
 			c.hub.enterLobby(c)
 		}

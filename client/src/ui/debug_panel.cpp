@@ -4,8 +4,11 @@
 #include "game_sprites.h"
 #include "../core/config.h"
 #include "../core/log.h"
+#include "../core/version.h"
 #include "../game/launch.h"
+#include "../game/memory.h"
 #include "../game/memscan.h"
+#include "../mp/multiplayer.h"
 #include "../game/pause_guard.h"
 #include "../game/session.h"
 #include "../game/sigs.h"
@@ -14,6 +17,8 @@
 #include "../game/watch.h"
 
 #include <cstdarg>
+#include <cstdio>
+#include <cstring>
 #include <windows.h>
 #include <imgui.h>
 
@@ -187,6 +192,9 @@ static void DrawLaunchOverride()
     }
     if (ImGui::Button("Play start sound"))
         launch::PlayStartSound();
+    // The 3-2-1 before a round: the game's cursor sound on 3 and 2, its enter sound on 1.
+    if (ImGui::Checkbox("Countdown sound (3-2-1)", &GetConfig().countdownSound))
+        SaveConfig();
 
     int32_t hovered = songs::Hovered();
     if (hovered >= 0) {
@@ -241,6 +249,14 @@ static void DrawLaunchOverride()
         // The pause menu task's state (TaskPauseManagerSwitch + 0x70): who opens it on alt-tab.
         if (ImGui::Button("Watch pause menu state (research)"))
             watch::Start(0x14CC0CA90 + 0x70, 12);
+
+        // The player profile: type the in-game profile name, then find it in memory (UTF-8 and UTF-16 hits are logged).
+        static char profileName[64] = "";
+        ImGui::SetNextItemWidth(220);
+        ImGui::InputText("Profile name", profileName, sizeof(profileName));
+        ImGui::SameLine();
+        if (ImGui::Button("Find in memory") && profileName[0])
+            memscan::FindText(profileName);
     }
 
     ImGui::Separator();
@@ -287,7 +303,7 @@ void DrawDebugPanel(bool* open)
 {
     ImGui::SetNextWindowSize(ImVec2(520, 640), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(40, 40), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("MultiDiva2 debug (Ctrl+F8)", open)) {
+    if (!ImGui::Begin("MultiDiva2 debug v" MULTIDIVA_VERSION " (Ctrl+F8)###md_debug", open)) {
         ImGui::End();
         return;
     }

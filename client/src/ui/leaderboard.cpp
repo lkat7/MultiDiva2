@@ -3,20 +3,23 @@
 #include "overlay.h"
 #include "../core/config.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
 #include <imgui.h>
 #include <unordered_map>
+#include <windows.h>
 
 namespace md::ui {
 
 // Proportions measured from osu!'s multiplayer leaderboard, relative to the card height.
 constexpr float CardHeightOfScreen = 0.060f; // ~65 px at 1080p
-constexpr float NameOfCard = 0.42f;
+constexpr float NameOfCard = 0.40f;
 constexpr float SmallOfCard = 0.31f;
-constexpr float WidthOfCard = 4.6f;          // card incl. avatar
+constexpr float OwnWidthFactor = 1.05f;      // our own card is this much wider than the others
+constexpr float WidthOfCard = 3.7f;          // card incl. avatar (was 4.6: it covered notes)
 constexpr float GapOfCard = 0.12f;
 constexpr float RoundingOfCard = 0.16f;
 constexpr float TopOfScreen = 0.097f;        // just below the life bar: notes reach the screen edges lower down
@@ -47,6 +50,7 @@ constexpr int ComboBreakMin = 20;   // combos below this breaking aren't dramati
 const ImVec4 Teal(0.45f, 0.86f, 0.86f, 1.0f);
 const ImVec4 Gold(1.0f, 0.82f, 0.30f, 1.0f);
 const ImVec4 Red(1.0f, 0.36f, 0.40f, 1.0f);
+const ImVec4 Amber(1.0f, 0.69f, 0.18f, 1.0f);
 const ImVec4 White(1.0f, 1.0f, 1.0f, 1.0f);
 
 float Approach(float t, float dt) { return 1.0f - std::exp(-t * dt); }
@@ -113,10 +117,14 @@ void DrawLeaderboard(const mp::State& s)
     const int count = (int)s.scores.size();
     const bool showGaps = GetConfig().showGaps;
 
-    int myScore = 0;
+    bool haveMe = false; // our own card is on the board (not after we quit): the others can show a difference to it
+    double myCompletion = 0;
     for (const mp::LiveScore& p : s.scores)
-        if (p.id == s.myId)
-            myScore = p.score;
+        if (p.id == s.myId) {
+            haveMe = true;
+            myCompletion = p.completion;
+        }
+    const bool byAccuracy = s.mode == "accuracy"; // the room ranks by completion %: it is the big number on the cards
 
     // Update animation state from the latest server ranking (scores arrive sorted).
     for (int rank = 0; rank < count; rank++) {
@@ -143,7 +151,7 @@ void DrawLeaderboard(const mp::State& s)
 
     // Cards hug the left screen edge, like osu!.
     ImGui::SetNextWindowPos(ImVec2(vp->Pos.x, vp->Pos.y + vp->Size.y * TopOfScreen), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(width + 2, count * (cardH + gap) + 2), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(width * OwnWidthFactor + 2, count * (cardH + gap) + cardH * 0.6f), ImGuiCond_Always);
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings
         | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoBackground;
     if (!ImGui::Begin("##leaderboard", nullptr, flags)) {
@@ -161,23 +169,28 @@ void DrawLeaderboard(const mp::State& s)
         const mp::LiveScore& p = s.scores[rank];
         Row& r = g_rows[p.id];
         bool me = p.id == s.myId;
+        // A player whose updates stopped (lag) or who hasn't loaded yet: the numbers aren't current, so dim the card.
+        const bool stale = (p.lag || p.loading) && !p.finished;
+        const float dim = stale ? 0.62f : 1.0f;
 
         ImVec2 a(origin.x, std::round(origin.y + r.y * (cardH + gap)));
-        ImVec2 b(a.x + width, a.y + cardH);
+        ImVec2 b(a.x + (me ? width * OwnWidthFactor : width), a.y + cardH);
         ImVec2 avB(a.x + cardH, b.y);
 
         // Card body: translucent navy, rounded on the right; the avatar sits square on the left.
-        ImVec4 navy = me ? ImVec4(0.10f, 0.17f, 0.26f, 0.80f) : ImVec4(0.06f, 0.09f, 0.16f, 0.66f);
+        ImVec4 navy = me ? ImVec4(0.13f, 0.23f, 0.35f, 0.90f * dim) : ImVec4(0.06f, 0.09f, 0.16f, 0.66f * dim);
         dl->AddRectFilled(a, b, ImGui::GetColorU32(navy), rounding, ImDrawFlags_RoundCornersRight);
+        if (me) // a teal outline: our own card stands out from the others
+            dl->AddRect(a, b, Col(Teal, 0.85f * dim), rounding, ImDrawFlags_RoundCornersRight, 2.0f);
         if (r.overtake > 0)
             dl->AddRectFilled(a, b, Col(me ? Teal : Gold, 0.28f * r.overtake), rounding, ImDrawFlags_RoundCornersRight);
         if (r.comboBreak > 0)
             dl->AddRectFilled(a, b, Col(Red, 0.38f * r.comboBreak), rounding, ImDrawFlags_RoundCornersRight);
 
         if (ID3D11ShaderResourceView* tex = PlayerPicture(s, p.id)) {
-            dl->AddImage((ImTextureID)tex, a, avB);
+            dl->AddImage((ImTextureID)tex, a, avB, ImVec2(0, 0), ImVec2(1, 1), Col(White, dim));
         } else {
-            dl->AddRectFilled(a, avB, ImGui::GetColorU32(NameColor(p.name)));
+            dl->AddRectFilled(a, avB, Col(NameColor(p.name), dim));
             char initial[2] = { p.name.empty() ? '?' : (char)toupper((unsigned char)p.name[0]), 0 };
             ImVec2 sz = Measure(fonts.cardName, nameSize * 1.3f, initial);
             Text(dl, fonts.cardName, nameSize * 1.3f, ImVec2(a.x + (cardH - sz.x) * 0.5f, a.y + (cardH - sz.y) * 0.5f),
@@ -187,45 +200,91 @@ void DrawLeaderboard(const mp::State& s)
         char buf[48];
         const float textX = avB.x + pad;
         const float right = b.x - pad;
-        const float alpha = me ? 1.0f : 0.88f;
+        const float alpha = (me ? 1.0f : 0.88f) * dim;
 
-        // Faint rank number, top right.
+        // Faint rank number behind the second line's right end.
         snprintf(buf, sizeof(buf), "%d", rank + 1);
         ImVec2 rankSz = Measure(fonts.cardName, nameSize * 1.15f, buf);
-        Text(dl, fonts.cardName, nameSize * 1.15f, ImVec2(right - rankSz.x, a.y + cardH * 0.04f), Col(White, 0.13f), buf);
+        Text(dl, fonts.cardName, nameSize * 1.15f, ImVec2(right - rankSz.x, a.y + cardH * 0.30f), Col(White, 0.10f), buf);
 
-        // Optional, first line right: how far ahead (+, red) or behind (-, teal) the others are.
-        float nameRight = right - rankSz.x - pad * 0.5f;
-        if (showGaps && !me && !p.finished && count > 1) {
-            int diff = p.score - myScore;
-            buf[0] = diff > 0 ? '+' : diff < 0 ? '-' : ' ';
-            FormatThousands(buf + 1, sizeof(buf) - 1, diff < 0 ? -diff : diff);
-            ImVec2 sz = Measure(fonts.cardSmall, smallSize, buf);
-            float gx = nameRight - sz.x;
-            Text(dl, fonts.cardSmall, smallSize, ImVec2(gx, a.y + cardH * 0.10f + (nameSize - smallSize) * 0.6f),
-                Col(diff > 0 ? Red : Teal, 0.75f), buf);
-            nameRight = gx - pad * 0.5f;
-        }
-
-        // Name on the first line (clipped before the rank number / gap).
-        float nameY = a.y + cardH * 0.10f;
-        ImVec4 clip(textX, a.y, nameRight, b.y);
+        // First line: the name, and at the right the accuracy (the game's completion percentage), or in accuracy mode
+        // the score, dimmer, since the percentage is what the card ranks by.
+        if (byAccuracy)
+            FormatThousands(buf, sizeof(buf), std::llround(r.shownScore));
+        else
+            snprintf(buf, sizeof(buf), "%.2f%%", std::floor(p.completion * 100.0 + 1e-6) / 100.0);
+        ImVec2 pctSz = Measure(fonts.cardSmall, smallSize, buf);
+        const float nameY = a.y + cardH * 0.08f;
+        Text(dl, fonts.cardSmall, smallSize, ImVec2(right - pctSz.x, nameY + (nameSize - smallSize) * 0.7f),
+            Col(White, (byAccuracy ? 0.60f : 0.72f) * alpha), buf);
+        ImVec4 clip(textX, a.y, right - pctSz.x - pad * 0.4f, b.y);
         Text(dl, fonts.cardName, nameSize, ImVec2(textX, nameY), Col(White, alpha), p.name.c_str(), &clip);
 
-        // Score on the second line, clear percentage and combo on its right.
-        float lineY = b.y - cardH * 0.10f - smallSize;
-        FormatThousands(buf, sizeof(buf), std::llround(r.shownScore));
-        Text(dl, fonts.cardSmall, smallSize, ImVec2(textX, lineY), Col(White, 0.92f * alpha), buf);
+        // Second line: the score on the left; on the right the combo, or a chip when the numbers aren't current.
+        const float lineY = b.y - cardH * 0.14f - smallSize;
+        // With "Score gaps" on, the others show how far ahead (+, red) or behind (-, teal) they are of us instead of
+        // their whole score; our own card keeps the full score.
+        const bool noScore = p.loading && !p.finished;
+        const bool asGap = showGaps && haveMe && !me && !p.finished && !noScore;
+        ImVec4 scoreColor = White;
+        float scoreAlpha = noScore ? 0.45f : 0.92f;
+        if (byAccuracy) {
+            // Our own card shows our accuracy; with "Score gaps" on the others show how many points ahead (+, red) or
+            // behind (-, teal) of us they are.
+            const double pct = std::floor(p.completion * 100.0 + 1e-6) / 100.0;
+            if (asGap) {
+                const double diff = p.completion - myCompletion;
+                if (std::fabs(diff) < 0.005)
+                    snprintf(buf, sizeof(buf), "even");
+                else
+                    snprintf(buf, sizeof(buf), "%c%.2f%%", diff > 0 ? '+' : '-', std::fabs(diff));
+                scoreColor = diff > 0.005 ? Red : Teal;
+                scoreAlpha = 0.95f;
+            } else {
+                snprintf(buf, sizeof(buf), "%.2f%%", pct);
+            }
+        } else if (asGap) {
+            const long long diff = std::llround(r.shownScore) - std::llround(g_rows[s.myId].shownScore);
+            buf[0] = diff > 0 ? '+' : diff < 0 ? '-' : ' ';
+            FormatThousands(buf + 1, sizeof(buf) - 1, diff < 0 ? -diff : diff);
+            if (diff == 0)
+                snprintf(buf, sizeof(buf), "even");
+            scoreColor = diff > 0 ? Red : Teal;
+            scoreAlpha = 0.95f;
+        } else {
+            FormatThousands(buf, sizeof(buf), std::llround(r.shownScore));
+        }
+        Text(dl, fonts.cardSmall, smallSize, ImVec2(textX, lineY), Col(scoreColor, scoreAlpha * alpha), buf);
 
-        snprintf(buf, sizeof(buf), p.failed ? "failed" : p.finished ? "done" : "%dx", p.combo);
-        ImVec2 comboSz = Measure(fonts.cardSmall, smallSize, buf);
-        Text(dl, fonts.cardSmall, smallSize, ImVec2(right - comboSz.x, lineY),
-            Col(p.failed || r.comboBreak > 0 ? Red : Teal, alpha), buf);
-
-        snprintf(buf, sizeof(buf), "%.2f%%", std::floor(p.completion * 100.0 + 1e-6) / 100.0);
-        ImVec2 pctSz = Measure(fonts.cardSmall, smallSize, buf);
-        float pctX = right - comboSz.x - pad - pctSz.x;
-        Text(dl, fonts.cardSmall, smallSize, ImVec2(pctX, lineY), Col(White, 0.70f * alpha), buf);
+        auto chip = [&](const char* label, ImVec4 bg, ImU32 fg) {
+            const float px = smallSize * 0.80f;
+            ImVec2 sz = Measure(fonts.cardSmall, px, label);
+            const float padX = px * 0.45f, padY = px * 0.12f;
+            ImVec2 c0(right - sz.x - padX * 2, lineY + (smallSize - px) * 0.5f - padY);
+            ImVec2 c1(right, c0.y + px + padY * 2);
+            dl->AddRectFilled(c0, c1, Col(bg, 0.95f), px * 0.30f);
+            Text(dl, fonts.cardSmall, px, ImVec2(c0.x + padX, c0.y + padY), fg, label);
+        };
+        if (p.lag && !p.finished) {
+            chip("LAG", Amber, IM_COL32(42, 26, 0, 255));
+        } else if (p.loading && !p.finished) {
+            chip("loading", ImVec4(1, 1, 1, 0.22f), IM_COL32(255, 255, 255, 235));
+        } else {
+            snprintf(buf, sizeof(buf), p.failed ? "failed" : p.finished ? "done" : "%dx", p.combo);
+            ImVec2 comboSz = Measure(fonts.cardSmall, smallSize, buf);
+            Text(dl, fonts.cardSmall, smallSize, ImVec2(right - comboSz.x, lineY),
+                Col(p.failed || r.comboBreak > 0 ? Red : Teal, alpha), buf);
+        }
+    }
+    // No scoreboard message from the server for 2 s: the stall is on our side (or the connection), not the players'.
+    if (!s.finishedSelf && s.scoresAt && GetTickCount() - s.scoresAt > 2000) {
+        const char* label = "no updates from the server";
+        const float px = smallSize * 0.85f;
+        ImVec2 sz = Measure(fonts.cardSmall, px, label);
+        ImVec2 c0(origin.x, origin.y + count * (cardH + gap));
+        ImVec2 c1(c0.x + sz.x + px, c0.y + px * 1.5f);
+        dl->AddRectFilled(c0, c1, Col(Amber, 0.92f), px * 0.3f);
+        Text(dl, fonts.cardSmall, px, ImVec2(c0.x + px * 0.5f, c0.y + px * 0.25f), IM_COL32(42, 26, 0, 255), label);
     }
     dl->PopClipRect();
     ImGui::End();

@@ -52,6 +52,12 @@ void WsClient::Send(std::string message)
     m_sendCv.notify_one();
 }
 
+size_t WsClient::Backlog() const
+{
+    std::lock_guard lock(m_mutex);
+    return m_outbox.size();
+}
+
 void WsClient::Poll(std::vector<std::string>& out)
 {
     std::lock_guard lock(m_mutex);

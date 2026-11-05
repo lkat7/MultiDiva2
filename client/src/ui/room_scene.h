@@ -1,6 +1,7 @@
 #pragma once
 #include "../mp/multiplayer.h"
 
+#include <array>
 #include <cstdint>
 #include <string>
 
@@ -17,17 +18,29 @@ struct RoomView {
     bool botRunning = false;
     bool ownOutfits = true;
     bool showLeaderboard = true, showGaps = true;
+    bool browseSounds = true;
+    bool host = false;         // we are the host in the lobby: the settings offer the win condition
+    bool accuracyMode = false; // the room ranks by accuracy instead of score
     // The song on the title plate: the one the host has highlighted in song select (live), else the last pick.
     std::string songTitle;  // "" = none: `songHint` instead
     int songDifficulty = -1; // 0..4 (4 = Extra Extreme) for the chip, -1 = none (a highlight has no difficulty)
+    float songLevel = -1;    // stars of that chart (7.5...), -1 = unknown
+    // For a highlight: the charts the song has, by difficulty 0..3 and the extra chart (4). -1 = no such chart,
+    // 0 = it exists (level unknown), else its stars.
+    std::array<float, 5> charts = { -1, -1, -1, -1, -1 };
+    int selectedChart = -1; // which of `charts` the host has selected (0..3, 4 = the Extra chart), -1 = unknown
+    int songBpm = -1;        // tempo, -1 = unknown
     std::string songHint;
     int songPv = -1; // its jacket, -1 = none
     std::string inviteUrl; // we host this server: the address to share (Copy invite in the header)
     bool inviteCopied = false;
 };
 
+// The colour a difficulty is shown in (0..4, 4 = Extra Extreme), ABGR like IM_COL32.
+unsigned int DifficultyColor(int difficulty);
+
 struct RoomAction {
-    enum Kind { None, ToggleReady, PickSong, Leave, GiveHost, Kick, Chat, ToggleBot, ToggleOutfits, ToggleLeaderboard, ToggleGaps,
+    enum Kind { None, ToggleReady, PickSong, Leave, GiveHost, Kick, Chat, ToggleBot, ToggleOutfits, ToggleLeaderboard, ToggleGaps, ToggleBrowseSounds, ToggleMode,
         CopyInvite } kind = None;
     int player = -1;  // GiveHost, Kick
     std::string text; // Chat

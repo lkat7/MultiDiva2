@@ -12,7 +12,11 @@ void Install();
 
 // Set every frame: true while this player is in a multiplayer round and the song is playing.
 void SetGuardActive(bool active);
+// Song select's confirm button starts the song. The gate is asked on each press (game thread); false = the press is
+// refused and the game never starts loading. Set once; null = no gate.
+void SetStartGate(bool (*gate)());
 void SetForced(bool forced); // Ctrl+F8 debug: guard on outside multiplayer too, for testing alone
+
 bool IsForced();
 bool GuardActive(); // in a multiplayer round (or the Ctrl+F8 test mode), song playing and not paused
 

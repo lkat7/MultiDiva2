@@ -90,7 +90,7 @@ Mode state as int32 array: `[0]` current mode, `[1]` next mode, `[2]` previous m
 song select = sub 5, gameplay = sub 7. The gameplay sub mode's init calls `task_pv_game_init_pv` ~270 ms later.
 
 Auto-start (`launch::StartNow`): from song select, arm the host's block, call `shift_next_mode_sub(7)` and
-`0x140653C30` like song select does. Verified in-game: clean transition, preview music stops, correct song and outfits. Only difference: no "start" jingle (played elsewhere, likely in virtualized code).
+`0x140653C30` like song select does. Verified in-game: clean transition, preview music stops, correct song and outfits. Only difference: no "start" jingle.
 
 Dead end (host pick without playing): swallowing song select's `shift_next_mode_sub(7)` leaves the game on an
 endless NOW LOADING screen (song select has already closed itself), and at that point the stage entry has
@@ -120,7 +120,7 @@ listener objects `{vtable, control, handler}` registered by `0x14061E3C0`; the d
 The pause itself starts in `pv_game::ctrl` (`0x140241DF0`): if `pv_game+1` (paused) is 0 it asks the pause manager,
 `TaskPauseManagerSwitch` (static object `0x14CC0CA90`, interface at `+0x68` = `0x14CC0CAF8`, vtable `0x140CC2548`),
 slot 3 `0x1401F0C30` = `task alive && dword [iface+8] != 0` (pending request). True (or the force flag
-`pv_game+0x2D2B5`, probably focus loss) runs the pause block (`0x1402424B3`, fires the pause event at `0x1402425A8`).
+`pv_game+0x2D2B5`) runs the pause block (`0x1402424B3`, fires the pause event at `0x1402425A8`).
 Second dead end: refusing that query only stops the song; the pause menu still opens. The menu is the task
 itself: `TaskPauseManagerSwitch` ctrl `0x14065BE90` is a state machine on `task+0x70` (0 = closed, i.e. the
 "pending" dword above). In state 0 it checks the pause button with `button_tapped(input, 0xA0)` (`0x1402AB260`,
@@ -155,7 +155,7 @@ it into the stage entry (verified with a write watch on entry +0x78: song select
   the chart or null (edition 2 = either). Song select's start builder uses the same calls.
 - Highlighted song: `0x1406DF6F0(list)` runs every frame on song select, reads the pv as int16 at
   `list+0xA88` and tail-jumps to the outfit loader `0x1401EAD50`. **Patching it (Detours) crashes the game
-  when song select opens** (fault in an unknown module, consistent with the protector checking that code), so
+  when song select opens** (fault in an unknown module), so
   `songs.cpp` uses a hardware execute breakpoint (DR1) and a vectored handler instead (reads rcx, sets RF).
 - pv_db entry (0x3E0 bytes each, contiguous): `+0x08` std::string song name as song select shows it, `+0x28`
   a second copy (both English with the game in English), `+0x50` song file, `+0x1A0` the pv id as text.
@@ -172,7 +172,7 @@ per-frame code `0x140268460` asks `0x1406083B0()` (a global flag, focus lost) an
 Verified in-game: with the slot-7 guard the song keeps running while alt-tabbed (borderless), but the game
 is silent in the background. The focus flag (`0x1406083B0` = window object `0x14CC014C0` state `+0x68` in
 {4,5}) is only read by the two pause requests (`0x140268460`, `0x14061FF10`) and the input system
-(`0x1402AA419` -> `0x1402AC250`, input ignored while unfocused): the mute is elsewhere (audio engine?). Open.
+(`0x1402AA419` -> `0x1402AC250`, input ignored while unfocused): the mute is not there.
 
 ## UI assets (research for the official-looking room screen)
 
@@ -184,8 +184,7 @@ is silent in the background. The focus flag (`0x1406083B0` = window object `0x14
   archives are FT-style encrypted FARCs (`FARC` signature, AES-128-CBC + gzip per entry, MikuMikuLibrary
   `FarcArchive.cs`), then sprite sets with TXP textures. A throwaway CPK reader is in the session scratchpad.
 - Community state (GameBanana, Oct 2026): UI mods only recolor or rearrange existing screens (After Effects +
-  Samyuu's AetPlugin); none adds a new screen. Plan: draw our own screens in the overlay, styled after the game,
-  later with the game's own sprites taken from its loaded sprite sets at runtime (no files, no keys shipped).
+  Samyuu's AetPlugin); none adds a new screen.
 - Runtime capture (Ctrl+F8 "Capture this screen's sprites", ui/gpu_capture.cpp): menu sprites are drawn as indexed
   quads, vertex = x y z (screen px), packed RGBA, u v; one texture (slot 0) per draw. Sprite sheets are 2048^2
   BC5 with 2 mips = YCbCr: mip 0 R = luma, G = alpha; mip 1 (half size) R = Cb, G = Cr, each `*1.003922 - 0.503929`;
@@ -267,3 +266,109 @@ ExPatch, MMPlusMods, DivaModLoader and about 30 other open Mega Mix+ plugins: no
 apart from standard API calls (Direct3D, ImGui backends, Windows) and DivaModLoader's credited `helpers.h`. A few
 game addresses also appear in other mods (the stage data getter, the sprite set loader, `play_se`, the pause button
 check, the song select start builder): they are the same game functions, found here independently as described.
+
+## Song database layouts (confirmed on Mega Mix+)
+
+- Song entry (`pv_db_pv`, 0x3E0 bytes): `+0x08` song name, `+0x28` a second copy, `+0x4C` BPM (pv 96 = 183 in game), `+0x50`
+  song file name (`rom/sound/song/pv_NNNN.ogg`). `songs::Bpm` reads +0x4C.
+- Chart struct (`pv_db_pv_difficulty`, from `0x1404BCA70(entry, difficulty, edition)`): `+0x00` difficulty, `+0x04` edition,
+  `+0x40` level in half stars (pv 96: raw 6/8/10/14 = 3.0/4.0/5.0/7.0, Extra chart raw 16 = 8.0). `songs::Level` reads +0x40.
+  A chart slot the song doesn't have is an empty placeholder with level 0.
+
+Song select input (logs): `button_tapped` (`0x1402AB260`) with button 5 (LEFT) is checked from `0x1406F030F` and button 6
+(RIGHT) from `0x1406F02F1`; they change the selected difficulty. UP 3 / DOWN 4 change the song, confirm is button 10 from
+`0x140669B42`, Q / E are 11 / 12 (tabs), T cycles the sort. A started round's `PvGameInit` showed diff 0,1,2,3,3+EX after the
+matching number of right taps.
+
+Confirm-time difficulty copy (write watch on the stage entry's difficulty, `0x1416E2BF4`): the writer is `mov [r14+8], eax`
+ending at `0x14040B6C5`, with `r14 = entry+0x2C` (the PvId field): a function copies three ints (pv, +0x30, difficulty) from a
+frame-local struct at `r15` into the stage entry. Call chain: `14040B66B` <- `1406F2EF6` (the start builder) <- `1406F2A8C` <-
+`1406EE589` <- main loop. The stage data base is `0x1416E2B90`.
+
+Selected chart in song select (2.3.11 log, confirmed): the first two ints of the stage data (`0x1416E2B90`) follow
+left/right live: `+0x0` = difficulty 0..3 (Easy, Normal, Hard, Extreme), `+0x4` = 1 for the Extra chart (then `+0x0` stays
+3). Right on the last chart wraps to Easy and left on Easy wraps to Extra. `songs::SelectedChart` reads them and the host
+sends them with `hover` (2.4.0).
+
+Song select objects (Cheat Engine session, confirmed): the highlighted pv is written by `1406DEA22: mov [rcx+0xA88], edx`
+with `rcx` = the song list object and `rdi` = the song select object (`pvsel`); the list sits at `pvsel+0x3380`. The 4 byte
+field at `pvsel+0x262A4` (the song to start) follows the highlight live and holds `-2` (0xFFFFFFFE) while Random is chosen;
+The list's
+`+0xA88` shows the real song id in random mode too.
+
+Highlight setter (2.4.5 watch log, disassembled with capstone): `0x1406DE9F0(list, pv)`: `push rbx; sub rsp,60h`, calls
+`0x1402B8080` (returns al: if non-zero it returns without doing anything), returns if `byte [list+0xA91]` is set, then
+`mov [list+0xA88], edx` (the write), looks the song up (`0x140580490` db, `0x140581F50` entry) and stores `0x1404BCCC0(entry)` at
+`list+0x600`, then calls `0x1406DF720(list)` and `0x1406DF970(&local, list, [list+0x600])`. Two kinds of callers per
+cursor step: `1401EAE3E` (called from `1406F4370` <- `1406EFE48` <- `1406F79D0` <- `1401DEFF9`) and `1406E1157` (from
+`14032F500` <- `1409777EF` <- `140165A2D` <- `1406E2F41` <- `1406E1ADD`); Random landings come only through `1406E1157`
+(from `1401DA834` <- `1406F0262` <- `1401DEFF9`), one write per second while it spins.
+
+Setting the highlight directly does not work (2.4.6 log): calling `0x1406DE9F0(list, pv)` from the overlay changed
+`+0xA88` but the game wrote the cursor's song back within a second, and confirming still started the cursor's song. The
+list is driven by a pointer to the current item (`mov rdx,[[rsi]]; mov edx,[rdx]` = the item's first int is the song id,
+read just before the setter call at `1406E1152`), not by `+0xA88`.
+
+Song select object fields (2.4.9 object watch, `pvsel` = list - 0x3380, 0x26400 bytes watched): sort mode is
+`+0x17DFC` (T cycles Star 6 > Singer 1 > Score 2 > Name 0 > Star), with a 1,2,3,0 step counter at `+0x17E0C` and `+0x262C0`;
+the selected difficulty is `+0x262C8` (3 -> 2 -> 3 for left, right), so the earlier "does not follow" CE result came from
+the wrong base. The character/star tab strip depends on the sort (Star: 6, 6.5 ... 10, ALL, heart; Singer: Miku, Rin,
+Len, Luka, KAITO, MEIKO, ALL, heart): ALL is always the second to last tab.
+
+Confirmed in game (2.3.1 log): pv_db chart level at chart `+0x40` in half stars (pv 96: raw 6/8/10/14 = 3.0/4.0/5.0/7.0,
+EX chart raw 16 = 8.0) and song entry BPM at entry `+0x4C` (pv 96 = 183).
+
+## Song select: what is known (status for "follow the host's song", 2.4.10)
+
+Objects (addresses are per song select session; offsets are stable):
+- **Song select object `pvsel`**: the song list object is a
+  member at `pvsel+0x3380`. `rdi` held `pvsel` and `rcx` the list when the highlight was written.
+- **Highlighted song**: int at `list+0xA88` (written by `0x1406DE9F0(list, pv)`, see "Highlight setter"). Derived from the
+  cursor's current item (`[item]` = pv). **Writing it or calling the setter does not move the cursor** (2.4.6): the game
+  writes the cursor's song back and confirming starts the cursor's song.
+- **Song to start copy** `pvsel+0x262A4` follows the highlight live and is `-2` (0xFFFFFFFE) while Random is chosen.
+- **Selected difficulty**: `pvsel+0x262C8` and the stage data header `0x1416E2B90 +0x0` (0..3); `+0x4` = 1 for the Extra
+  chart. Both follow left/right live. The mod reads the stage data (`songs::SelectedChart`).
+- **Sort mode** `pvsel+0x17DFC`: T cycles Star (6) > Singer (1) > Score (2) > Name (0) > Star. Step counter 1,2,3,0 at
+  `pvsel+0x17E0C` and `pvsel+0x262C0`.
+- **Tabs (Q / E)**: the strip depends on the sort. Star: 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10, ALL, heart. Singer: Miku, Rin,
+  Len, Luka, KAITO, MEIKO, ALL, heart. ALL is always the second to last tab, heart the last. Q and E are the game's L (11)
+  and R (12).
+- **Counter** "NNN / 492 songs" is the cursor's position in the current (filtered, sorted) list; the list wraps.
+- **Random** moves the cursor to a song at once (one highlight write per second while it spins). The real list order
+  and filter differ per player.
+
+## Sound streams (file open trace, dump and write watch)
+
+A song's `.ogg` reaches `CreateFileW` (the file layer probes every mod folder in turn, then `rom`) through this chain on
+the main thread: `14099492C` (C runtime fopen-like) <- `140995424` <- `140172C40` (file wrapper) <- `14016BFA6` (path
+normalisation, looks for `rom/`) <- `1402A5330` <- `1405AF560` (starts streaming a file) <- `1405AF420` (state machine,
+jump table for states 0..6, state at object `+0x50`) <- `1405AF2A0` (per-object update) <- `1405AED20` (loops over the three
+objects, 0x58 bytes each, global array at `0x14CBFF0A0`) <- `1405AA037` <- `1402B68C0` <- the task loop.
+
+Stream player 0 is the song select preview (dump, pv 1231): `+0x00` std::string with the file name (size `+0x10`, capacity
+`+0x18`), `+0x30` a float that counts up in real time (the playback position), `+0x50` the state, which the update loop
+rewrites every frame, so a write watch on it only shows that loop. Players 1 and 2 were idle. The vanilla `.ogg` files on
+disk are encrypted; mod songs' are plain.
+
+Static reading of the dump: `0x1405AEDA0` is `GetStreamPlayer(int index)` (`0x14CBFF0A0 + index*0x58` for 0..2, else null);
+`0x1405AF2A0` is the per-player update (state at `+0x50`, std::string name at `+0x00`); `0x1405AED20` / `0x1405AED70` loop
+over the three players.
+
+Preview start (write watch on player 0's file name, log 3a10b073; all on the game thread in the song select frame):
+`1406EDC40` (pvsel update, rcx = pvsel) -> `1406F7870` (preview state machine, rcx = `pvsel+0x258D8`) -> `1406F7650` (StartPreview)
+-> `1405AB190` (player 0 wrapper) -> `1405AF110` -> `1405AF010` (assigns the name to the player) -> `14014BA50` (std::string
+assign). The names written are 26 characters (`rom/sound/song/pv_NNNN.ogg`). `StartPreview(state = rcx, const char* name = rdx,
+int id = r8d, float xmm3, ...)` stores the id at `state+4` (CE: written by `1406F77A7`, `-2` while the Random slot is chosen,
+`-1` written by `1627D132C` on a song change) and the name at `state+0x20`.
+
+## Song select cursor and list (Cheat Engine, confirmed)
+
+`pvsel` = song select object = highlight hook's `rcx` (the list object, `pvsel+0x3380`) minus `0x3380`.
+
+- Cursor: `pvsel+0x18F0C` = index of the selected row; it follows Down / Up (CE). In code it is reached as
+  `1406DE430(pvsel+0x1A50)` (+0x163E0) -> `1406E2FA0` (+0x10D8) -> getter `14023E8C0` (`mov eax,[rcx+4]`).
+- Each frame `1406EFD10` copies the cursor to `pvsel+0x261F0` (previous index, for change detection; writing it does
+  nothing) and derives the song: `pv = [[[item]]]` (`1406EFDBF..1406EFDE5`), stored to `pvsel+0x262A4` (`1406EFE8A`, every
+  frame). `-1` = no item, `-2` = the Random slot. The chain from the setter's `rsi` to the pv was walked by hand in CE.
+- Random does not scroll: it replaces the Random slot's song ("?????" shows the pick, Esc puts "?????" back).

@@ -18,12 +18,15 @@ namespace md::pause {
 namespace addr {
 constexpr uintptr_t ButtonTapped = 0x1402AB260;      // bool (input*, int button), shared by the whole game
 constexpr uintptr_t PauseButtonCheckRet = 0x14065BF8C; // return address of the menu's pause button check
+constexpr uintptr_t SongSelectConfirmRet = 0x140669B42; // return address of song select's confirm check (button 10); the
+                                                        // song starts about 0.8 s after a tap there (logs, 10 of 10)
 constexpr uintptr_t PauseMenuState = 0x14CC0CA90 + 0x70; // int: 0 = menu closed
 } // namespace addr
 
 using ButtonFn = bool(__fastcall*)(void* input, int button);
 static ButtonFn s_buttonOriginal = nullptr;
 
+static std::atomic<bool (*)()> s_startGate{nullptr};
 static std::atomic<bool> s_guard{false};
 static std::atomic<bool> s_forced{false};
 static std::mutex s_mutex;
@@ -103,9 +106,16 @@ static void __fastcall RequestPauseHook(void* iface, bool flag)
     s_requestOriginal(iface, flag);
 }
 
+void SetStartGate(bool (*gate)()) { s_startGate = gate; }
+
 static bool __fastcall ButtonHook(void* input, int button)
 {
     bool pressed = s_buttonOriginal(input, button);
+    // Song select's confirm: the room's rules may say no (only that one caller, never the other menus' confirm).
+    if (pressed && button == 10 && (uintptr_t)_ReturnAddress() == addr::SongSelectConfirmRet) {
+        if (bool (*gate)() = s_startGate.load(); gate && !gate())
+            return false;
+    }
     if (!pressed || (uintptr_t)_ReturnAddress() != addr::PauseButtonCheckRet || !(s_guard || s_forced))
         return pressed;
     bool allow = AllowPause();

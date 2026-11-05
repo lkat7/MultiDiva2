@@ -27,6 +27,9 @@ public:
     // Moves received text messages into `out`.
     void Poll(std::vector<std::string>& out);
 
+    // Messages queued but not yet written to the socket: grows when the connection can't keep up.
+    size_t Backlog() const;
+
     Status GetStatus() const { return m_status; }
     std::string LastError() const;
 

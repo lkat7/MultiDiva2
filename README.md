@@ -8,14 +8,19 @@ Join a room with friends, the host picks a song, and it starts for everyone at t
 
 ## Features
 
-- Rooms with chat, a host, and a ready check
-- The host plays any song in song select and it starts for everyone in the room, all at the same moment
-- A live leaderboard during the song (it can be hidden), and shared results afterwards
+- Rooms with chat, a host, and a ready check. Leaving song select unreadies you, and readying, unreadying and a new host play the game's own sounds
+- The host plays any song in song select and it starts for everyone in the room, all at the same moment, after a 3-2-1 countdown (with an optional tick sound, in Ctrl+F8)
+- In a room only the host can start a song, and only when everyone is ready: confirm in song select is refused otherwise, with a notice on screen (the host presses confirm again within 5 seconds to start anyway)
+- A live leaderboard during the song (it can be hidden): your own card is wider and outlined, the others show how far ahead or behind you they are (Score gaps, on by default), and a player whose updates stop for 2 seconds shows a LAG chip while one still loading shows "loading". Shared results afterwards, and round wins counted per room ("2 wins")
+- The host can rank the room by score (default) or by accuracy ("Win by" in the room options)
+- The host's highlighted song shows with its cover, BPM and the charts it has as muted difficulty chips, with the chart the host selected filled in; browsing the list and changing the difficulty plays the game's cursor sounds for everyone else
 - Everyone plays with their own outfits, or with the host's
 - Warns when someone in the room doesn't have the song the host is looking at (custom song packs for example)
 - The host can hand over host or kick players (right-click a player)
-- Steam profile pictures
+- Steam profile pictures, or your own: drop an `avatar.png` next to `MultiDiva.dll` (it is shrunk to fit)
+- **Reconnecting:** if your connection drops (mobile data, wifi hiccup), the mod retries for about a minute and puts you back in your room and round with your score. A host whose connection is down when they start a song plays it solo instead of waiting on the loading screen, and live scores slow down from 10 to 5 to 3 per second on a bad connection. Needs the 2.2.0 server and client
 - Pausing is blocked during a multiplayer round (press Esc twice to pause anyway), and alt-tab doesn't pause either
+- **Spectator page:** the server also serves a live web page (`http://<server address>/`) with every room, its players and Steam pictures, the song, and the live leaderboard, for friends who just want to watch. It never shows chat. `-spectate=false` turns it off ([docs/hosting.md](docs/hosting.md))
 - **Host a server** in one click: runs a small server on your PC with a free Cloudflare tunnel, so friends can join from anywhere without router setup
 - Miku Bot, a practice opponent for testing alone (if u dont have friends lol)
 - **Coming next (probably the next release):** multiplayer through Steam directly, so you can join and invite friends from Steam instead of sharing an address
@@ -31,7 +36,7 @@ Join a room with friends, the host picks a song, and it starts for everyone at t
 | Key | |
 |---|---|
 | F8 | MultiDiva2 window: connect, host, room, chat |
-| Ctrl+F8 | extra options (work-in-progress screens) |
+| Ctrl+F8 | extra options (countdown sound, work-in-progress screens) |
 | F9 | hide everything MultiDiva2 shows |
 
 - **Joining:** paste the address your friend sends you (`wss://...`) into *Server* and click *Connect*.
@@ -47,14 +52,12 @@ Settings are kept in `%LOCALAPPDATA%\MultiDiva2`, so updates don't reset them.
 
 Things I'd like to add (no promises on when):
 
-- Song preview in the room: hear the song the host is looking at, like osu!
+- Song preview in the room: hear the song the host is looking at, like osu! (stuck for now: the game's own song files are encrypted, only mod songs' are plain)
 - Full-screen multiplayer screens drawn with the game's own art (already in the works, press Ctrl+F8 to try them, the option is called "Full-screen F8 screens (work in progress)")
 - Results screen and round banners in the game's style
 - Restyled leaderboard cards
 - A Multiplayer entry in the main menu (edit: if that's even possible lol)
-- Rejoining a round that's already playing after a short disconnect (might add this next release since that happens a lot)
 - Room list scrolling for busy servers
-- Session scoreboard (round wins over the evening), 3-2-1 countdown
 - Team mode (2v2, summed scores, 2 players on the right, 2 on the left, maybe a tug-of-war with a crown just like osu!)
 - Song select search bar and F2 for a random song (other features for osu! players like me)
 

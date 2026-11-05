@@ -133,6 +133,9 @@ static md::mp::State FakeState(bool swapped)
     else
         s.scores = { { 1, "littl", 3421130, 410, 62.71, false }, { 3, "双重音律", 3418020, 342, 62.55, false },
             { 4, "初音ミク", 3395580, 366, 61.77, false }, { 2, "MikuBot", 2684916, 0, 48.05, false } };
+    s.scores.back().lag = true; // MikuBot's updates stopped: the card dims and shows the LAG chip
+    s.players[0].wins = 2;
+    s.rounds = 3;
     return s;
 }
 

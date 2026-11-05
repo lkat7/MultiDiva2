@@ -11,7 +11,9 @@
 #include "../game/titles.h"
 #include "../net/host.h"
 #include "../net/ws_client.h"
+#include "../ui/own_avatar.h"
 
+#include <algorithm>
 #include <cstring>
 #include <windows.h>
 #include <nlohmann/json.hpp>
@@ -22,7 +24,11 @@ namespace md::mp {
 
 static constexpr int ProtocolVersion = 1;
 static constexpr size_t MaxChatLines = 100;
-static constexpr DWORD ScoreIntervalMs = 100;
+// Live scores go out every 100 ms (10 Hz) on a healthy link; when the socket can't keep up (messages pile up in the
+// outbox) the rate steps down to 5 Hz and then 3 Hz, and back up after a few calm seconds.
+static constexpr DWORD ScoreIntervalMs[] = { 100, 200, 333 };
+static int s_scoreLevel = 0;
+static DWORD s_scoreLevelAt = 0;
 static constexpr DWORD StartTimeoutMs = 15000;
 // A start that came in elsewhere waits until song select has been up this long (and has a highlighted song):
 // starting in its first frames, before it has set itself up, loads the song into a black screen.
@@ -39,6 +45,12 @@ static DWORD s_startReceivedAt = 0;
 static DWORD s_lastScoreSent = 0;
 static bool s_finishSent = false;
 static bool s_hostStartSent = false; // we sent `start` and wait for its echo
+static DWORD s_hostStartAt = 0;
+static bool s_forceStart = false; // the host pressed confirm twice with players not ready: the next start is forced
+static DWORD s_forceStartAt = 0;
+static bool s_playRefusal = false; // play the "no" sound from Tick (the gate runs inside the game's button check)
+static bool s_hostStartAbandoned = false; // we gave up waiting for that echo and play solo (a late echo is handled)
+static constexpr DWORD HostStartAckMs = 6000; // the server confirms a start within this, else the host plays solo
 static bool s_titleSent = false;     // host: the round's title went out (with `start` or later)
 static std::string s_haveReported;   // song (pv/difficulty/edition) we last reported having or not
 static int s_hoverSent = -2;         // host: last highlighted song sent, -2 = none yet
@@ -56,10 +68,12 @@ static void ArmBarrier()
 {
     sync::SetHoldStep(sync::BarrierStep);
     s_loadedSent = s_goReceived = false;
+    s.countdown = 0;
 }
 
 static void DisarmBarrier()
 {
+    s.countdown = 0;
     sync::Release(); // releases a held load and disarms the hold
 }
 
@@ -81,8 +95,17 @@ static void AddChat(ChatLine::Kind kind, std::string name, std::string text)
         s.chat.pop_front();
 }
 
+static void Toast(const std::string& text)
+{
+    s.toast = text;
+    s.toastAt = GetTickCount();
+}
+
 static void Send(const char* type, json data = json::object())
 {
+    // While reconnecting the socket is dead or not yet greeted: anything but the hello would be lost or refused.
+    if (s.reconnecting && strcmp(type, "hello") != 0)
+        return;
     s_ws.Send(json{ { "type", type }, { "data", std::move(data) } }.dump());
 }
 
@@ -150,6 +173,15 @@ static std::string NormalizeWss(std::string url)
 // Room to join as soon as the server says welcome ("" = stay in the lobby and show its room list).
 static std::string s_joinOnWelcome;
 
+// A dropped connection in a room is retried for a while: the token from `welcome` lets the new connection take over
+// our old place (id, score, round) as long as the server still holds it (it waits about a minute).
+static std::string s_resumeToken;
+static DWORD s_reconnectUntil = 0;
+static DWORD s_nextAttempt = 0;
+static int s_attempts = 0;
+static json s_finishResult; // what we reported at the end of the round, to report again if the drop lost it
+constexpr DWORD ReconnectWindowMs = 55000;
+
 void HostAndConnect() { HostAndConnect(GetConfig().room); }
 
 void HostAndConnect(const std::string& joinRoom)
@@ -194,6 +226,7 @@ static void ConnectTo(const std::string& server, int port)
     const Config& cfg = GetConfig();
     s_lastServer = server;
     s_lastPort = port;
+    s_resumeToken.clear(); // a connection chosen by the player starts a new session
     Endpoint ep = ParseServer(server, port);
     s_endpoint = ep;
     s = State{};
@@ -232,6 +265,11 @@ void JoinRoom(const std::string& room)
 }
 void SetReady(bool ready) { Send("ready", { { "ready", ready } }); }
 void DismissResults() { s.showResults = false; }
+void SetMode(const std::string& mode)
+{
+    if (mode == "score" || mode == "accuracy")
+        Send("mode", { { "mode", mode } });
+}
 
 static void ClearRoom();
 
@@ -253,6 +291,7 @@ static void ClearRoom()
     s.inRound = s.startPending = false;
     s.hover = s.focus = -1;
     s.hoverTitle.clear();
+    s.hoverDifficulty = s.hoverEdition = -1;
     s_hostStartSent = false;
     s_haveReported.clear();
     s_hoverSent = -2;
@@ -269,6 +308,11 @@ void SendChat(const std::string& text)
 
 static void OnRoom(const json& d)
 {
+    const int prevHover = s.hover, prevDiff = s.hoverDifficulty, prevEdition = s.hoverEdition;
+    const int prevHost = s.hostId;
+    const bool wasInRoom = s.inRoom;
+    const std::vector<Player> prevPlayers = s.players;
+    const std::string prevRoomState = s.roomState;
     s.inRoom = true;
     s.roomName = d.value("name", "");
     s.roomState = d.value("state", "lobby");
@@ -277,7 +321,7 @@ static void OnRoom(const json& d)
     for (const json& p : d.value("players", json::array()))
         s.players.push_back({ p.value("id", 0), p.value("name", ""), p.value("ready", false), p.value("playing", false),
             p.value("loaded", false), strtoull(p.value("steam", "").c_str(), nullptr, 10), p.value("avatar", false),
-            p.value("missing", false) });
+            p.value("missing", false), p.value("away", false), p.value("wins", 0) });
     s.pick.reset();
     if (d.contains("pick") && d["pick"].is_object()) {
         const json& p = d["pick"];
@@ -285,8 +329,55 @@ static void OnRoom(const json& d)
     }
     s.hover = d.value("hover", -1);
     s.hoverTitle = d.value("hoverTitle", "");
+    s.hoverDifficulty = d.value("hoverDifficulty", -1);
+    s.hoverEdition = d.value("hoverEdition", -1);
     s.focus = d.value("focus", -1);
+    s.rounds = d.value("rounds", 0);
+    s.mode = d.value("mode", "score");
+    // Someone readied or unreadied: the game's confirm / cancel sounds. Not for the first snapshot of a room, not when a
+    // round starts or ends (that clears everybody's ready flag at once), not in a song.
+    if (wasInRoom && prevRoomState == "lobby" && s.roomState == "lobby" && !s.inRound && !g_session.inSong) {
+        bool readied = false, unreadied = false;
+        for (const Player& now : s.players)
+            for (const Player& before : prevPlayers)
+                if (before.id == now.id) {
+                    readied |= !before.ready && now.ready;
+                    unreadied |= before.ready && !now.ready;
+                }
+        if (readied)
+            launch::PlayGameSound("se_ft_sys_enter_01");
+        else if (unreadied)
+            launch::PlayGameSound("se_ft_sys_cansel_01"); // (the game's own spelling)
+    }
+    // The host changed (they left, or gave it away): a sound and a notice, also for players with the F8 window closed.
+    if (wasInRoom && prevHost >= 0 && s.hostId >= 0 && s.hostId != prevHost) {
+        for (const Player& p : s.players)
+            if (p.id == s.hostId)
+                Toast(p.id == s.myId ? "You are now the host" : p.name + " is now the host");
+        if (!s.inRound && !g_session.inSong)
+            launch::PlayGameSound("se_ft_custom_item_01"); // the game's "item gained" sound
+    }
+    // Our start was heard (this room update says the round is on) even if its echo was lost with the connection.
+    if (s_hostStartSent && IsHost() && s.roomState == "playing") {
+        s_hostStartSent = false;
+        s.inRound = true;
+        Log("mp: the room is playing: our start was received");
+    }
     ReportHave();
+
+    // The host browses song select: play the game's own cursor and difficulty sounds, so guests hear it happen.
+    // Only guests in the lobby and not in a song, and not faster than a few times a second.
+    static DWORD s_lastBrowseSound = 0;
+    if (!IsHost() && GetConfig().browseSounds && s.roomState == "lobby" && !s.inRound && !g_session.inSong && s.hover >= 0
+        && GetTickCount() - s_lastBrowseSound > 60) {
+        if (s.hover != prevHover && prevHover >= 0) { // not for the first highlight we hear about (joining, a new round)
+            launch::PlayGameSound("se_ft_music_selector_select_01");
+            s_lastBrowseSound = GetTickCount();
+        } else if (s.hover == prevHover && s.hoverDifficulty >= 0 && (s.hoverDifficulty != prevDiff || s.hoverEdition != prevEdition)) {
+            launch::PlayGameSound("se_ft_music_selector_difficulty_change_01");
+            s_lastBrowseSound = GetTickCount();
+        }
+    }
 }
 
 // Tells the room whether we have the song in focus, once per song (and chart, for the pick).
@@ -313,8 +404,10 @@ static void OnStart(const json& d)
         return;
     }
     s.scores.clear();
+    s.scoresAt = 0;
     s.showResults = false;
     s_finishSent = false;
+    s.finishedSelf = false;
     s_lastScoreSent = 0;
 
     if (s_hostStartSent) {
@@ -322,6 +415,14 @@ static void OnStart(const json& d)
         s_hostStartSent = false;
         s.inRound = true;
         return; // the barrier was armed when we sent the start
+    }
+    if (s_hostStartAbandoned && IsHost()) {
+        // We gave up waiting and are playing solo, but the server did start the round: count as in it, so our song's
+        // end reports a result and the room isn't left waiting for us.
+        s_hostStartAbandoned = false;
+        s.inRound = true;
+        Log("mp: the server's start came after we gave up: counting this play as the round");
+        return;
     }
     memcpy(s_startBlock.bytes, bytes.data(), bytes.size());
     // Starting a song we don't have would hang or crash the game: sit this round out instead.
@@ -339,10 +440,12 @@ static void OnStart(const json& d)
 
 static void OnScores(const json& d)
 {
+    s.scoresAt = GetTickCount();
     s.scores.clear();
     for (const json& p : d.value("players", json::array()))
         s.scores.push_back({ p.value("id", 0), p.value("name", ""), p.value("score", 0), p.value("combo", 0),
-            p.value("completion", 0.0), p.value("finished", false), p.value("failed", false) });
+            p.value("completion", 0.0), p.value("finished", false), p.value("failed", false), p.value("loading", false),
+            p.value("lag", false) });
 }
 
 static void OnResults(const json& d)
@@ -380,7 +483,31 @@ static void Handle(const std::string& raw)
     const json& d = msg.contains("data") && msg["data"].is_object() ? msg["data"] : json::object();
 
     if (type == "welcome") {
-        s.myId = d.value("id", -1);
+        int id = d.value("id", -1);
+        s_resumeToken = d.value("token", "");
+        s.serverVersion = d.value("server", "");
+        if (s.reconnecting) {
+            s.reconnecting = false;
+            s.connLostAt = 0;
+            if (id == s.myId) {
+                Log("mp: reconnected, resumed as player %d", id);
+                AddChat(ChatLine::System, "", "Reconnected.");
+                // Things we said while the socket was dead are gone; the server ignores repeats.
+                if (s_finishSent && s.inRound && !s_finishResult.is_null())
+                    Send("finish", { { "result", s_finishResult } });
+                if (s_loadedSent && !s_goReceived)
+                    Send("loaded");
+                return;
+            }
+            // The server no longer holds our place (too long, or it restarted): back into the room as a new player.
+            Log("mp: reconnected as a new player %d, rejoining %s", id, s.roomName.c_str());
+            std::string room = s.roomName;
+            s.myId = id;
+            ClearRoom();
+            JoinRoom(room);
+            return;
+        }
+        s.myId = id;
         s.conn = Conn::Online;
         Log("mp: online as player %d", s.myId);
         if (!s_joinOnWelcome.empty())
@@ -401,7 +528,19 @@ static void Handle(const std::string& raw)
         OnScores(d);
     } else if (type == "results") {
         OnResults(d);
+    } else if (type == "countdown") {
+        // 3, 2, 1 before `go` (0.5 s apart). Only drawn and heard by players who are in the round.
+        s.countdown = d.value("n", 0);
+        s.countdownAt = GetTickCount();
+        if (s.inRound && s.countdown > 0 && GetConfig().countdownSound) {
+            // 3 and 2: the song cursor sound; 1: the sound of entering the song.
+            if (s.countdown == 1)
+                launch::PlayStartSound();
+            else
+                launch::PlayGameSound("se_ft_music_selector_select_01");
+        }
     } else if (type == "go") {
+        s.countdown = 0;
         s_goReceived = true;
         Log("mp: go");
     } else if (type == "kicked") {
@@ -446,6 +585,7 @@ static void SendFinish(bool fromResultScreen)
     if (s_finishSent)
         return;
     s_finishSent = true;
+    s.finishedSelf = true;
 
     const GameState& g = g_session.state;
     json result;
@@ -461,6 +601,7 @@ static void SendFinish(bool fromResultScreen)
         result["maxCombo"] = 0;
         result["failed"] = true;
     }
+    s_finishResult = result;
     Send("finish", { { "result", result } });
     Log("mp: finish sent (%s)", fromResultScreen ? "result screen" : "quit");
 }
@@ -472,19 +613,33 @@ void OnGameEvent(const GameEvent& e)
 
     switch (e.type) {
     case GameEventType::PvGameInit: {
+        // Anyone but the host starting a song on their own plays it solo: the room never hears of it.
+        if (!e.overridden && !IsHost() && !s.inRound && !s.startPending)
+            AddChat(ChatLine::System, "", "You started a song on your own: it's a solo play, not part of the room's round.");
         // The host started a song in their own game: that launch is the round start.
         if (e.overridden || !IsHost() || s.roomState != "lobby")
             break;
         launch::Block block;
         if (!launch::LastLaunch(block))
             break;
+        // The socket is down (we are reconnecting): the start would be lost, and holding for a round the server
+        // never heard of leaves the host on the loading screen alone. Play it solo instead.
+        if (s.reconnecting) {
+            AddChat(ChatLine::Error, "", "The connection is down, so this song plays solo (the room didn't get the start).");
+            Log("mp: host launched pv=%d while reconnecting: solo", block.PvId());
+            break;
+        }
+        s_hostStartAbandoned = false;
+        const bool force = s_forceStart && GetTickCount() - s_forceStartAt < 5000; // the host chose to start anyway
+        s_forceStart = false;
         Send("start", {
             { "block", Base64Encode(block.bytes, sizeof(block.bytes)) },
             { "pv", block.PvId() }, { "difficulty", block.Difficulty() }, { "edition", block.Edition() },
-            { "title", titles::Find(block.PvId()) },
+            { "title", titles::Find(block.PvId()) }, { "force", force },
         });
         s_titleSent = !titles::Find(block.PvId()).empty();
         s_hostStartSent = true;
+        s_hostStartAt = GetTickCount();
         ArmBarrier(); // our own load takes seconds, so the hold is in place long before step 3
         Log("mp: host launched pv=%d, starting round", block.PvId());
         break;
@@ -502,8 +657,90 @@ void OnGameEvent(const GameEvent& e)
     }
 }
 
+// Song select's confirm button, in a room: only the host starts, and only when everyone is ready. A host who presses
+// confirm again within 5 s starts anyway. Runs in the game's button check, so it only decides and sets a notice.
+static bool EvaluateStart()
+{
+    if (s.conn != Conn::Online || !s.inRoom || s.reconnecting || s.inRound || s.startPending)
+        return true;
+    if (!launch::InSongSelect())
+        return true;
+    const DWORD now = GetTickCount();
+    if (!IsHost()) {
+        Toast("Only the host can start a song in this room");
+        s_playRefusal = true;
+        return false;
+    }
+    if (s.roomState != "lobby")
+        return true; // a round is on: the server decides
+    std::string waiting;
+    int count = 0;
+    for (const Player& p : s.players)
+        if (p.id != s.myId && !p.ready && !p.missing) { // the same players the server waits for
+            if (count++ < 3)
+                waiting += (waiting.empty() ? "" : ", ") + p.name;
+        }
+    if (count == 0)
+        return true;
+    static DWORD s_refusedAt = 0;
+    if (s_refusedAt && now - s_refusedAt < 5000) {
+        s_refusedAt = 0;
+        s_forceStart = true;
+        s_forceStartAt = now;
+        Toast("Starting anyway");
+        return true;
+    }
+    s_refusedAt = now;
+    if (count > 3)
+        waiting += " +" + std::to_string(count - 3);
+    Toast("Waiting for " + waiting + " to be ready. Press confirm again to start anyway");
+    s_playRefusal = true;
+    return false;
+}
+
+// The game may ask about one press more than once: one decision per press.
+static bool SongStartGate()
+{
+    static DWORD s_at = 0;
+    static bool s_allowed = true;
+    const DWORD now = GetTickCount();
+    if (s_at && now - s_at < 250)
+        return s_allowed;
+    s_at = now;
+    s_allowed = EvaluateStart();
+    return s_allowed;
+}
+
 void Tick()
 {
+    static bool s_gateSet = false;
+    if (!s_gateSet) {
+        s_gateSet = true;
+        pause::SetStartGate(&SongStartGate);
+    }
+    // Ready means "waiting on song select": leaving that screen for a while takes the ready back.
+    {
+        static DWORD s_leftSelectAt = 0;
+        const Player* me = Me();
+        const bool waiting = s.conn == Conn::Online && s.inRoom && !s.reconnecting && s.roomState == "lobby" && !s.inRound
+            && !s.startPending && me && me->ready;
+        if (waiting && !launch::InSongSelect()) {
+            const DWORD now = GetTickCount();
+            if (!s_leftSelectAt)
+                s_leftSelectAt = now;
+            else if (now - s_leftSelectAt > 1500) { // not for a screen change that is over in a moment
+                s_leftSelectAt = 0;
+                SetReady(false);
+                Toast("You left song select, so you are not ready");
+            }
+        } else {
+            s_leftSelectAt = 0;
+        }
+    }
+    if (s_playRefusal) {
+        s_playRefusal = false;
+        launch::PlayGameSound("se_ft_sys_ng_01");
+    }
     // Off unless the checks below find us playing a round (also when offline).
     pause::SetGuardActive(false);
 
@@ -517,9 +754,19 @@ void Tick()
     // while scrolling; the last highlight always goes out).
     if (s.conn == Conn::Online && s.inRoom && IsHost() && s.roomState == "lobby") {
         int hovered = songs::Hovered();
-        if (hovered != s_hoverSent && GetTickCount() - s_hoverSentAt >= HoverIntervalMs) {
-            Send("hover", { { "pv", hovered }, { "title", hovered >= 0 ? titles::Find(hovered) : "" } });
-            s_hoverSent = hovered;
+        // The chart selected with left/right counts as part of the highlight: a change of difficulty alone is sent.
+        int32_t diff = -1, edition = -1;
+        if (hovered >= 0 && !songs::SelectedChart(diff, edition))
+            diff = edition = -1;
+        int hoverKey = hovered < 0 ? -1 : hovered * 16 + (diff + 1) * 2 + (edition > 0 ? 1 : 0);
+        if (hoverKey != s_hoverSent && GetTickCount() - s_hoverSentAt >= HoverIntervalMs) {
+            json msg = { { "pv", hovered }, { "title", hovered >= 0 ? titles::Find(hovered) : "" } };
+            if (diff >= 0) {
+                msg["difficulty"] = diff;
+                msg["edition"] = edition;
+            }
+            Send("hover", std::move(msg));
+            s_hoverSent = hoverKey;
             s_hoverSentAt = GetTickCount();
         }
     } else {
@@ -529,25 +776,52 @@ void Tick()
     // Connection status changes. A connect that fails within a frame goes Disconnected -> Connecting ->
     // Disconnected between two ticks, so a disconnected socket while we think we're connecting counts too.
     net::WsClient::Status status = s_ws.GetStatus();
+    if (s.reconnecting && status == net::WsClient::Status::Disconnected && s_lastStatus == status
+        && (int)(GetTickCount() - s_nextAttempt) >= 0) {
+        Log("mp: reconnecting (attempt %d)", s_attempts + 1);
+        s_ws.Connect(Widen(s_endpoint.host), (uint16_t)s_endpoint.port, Widen(s_endpoint.path), s_endpoint.secure);
+        s_lastStatus = net::WsClient::Status::Connecting;
+        status = s_ws.GetStatus();
+    }
     if (status == net::WsClient::Status::Disconnected && s.conn == Conn::Connecting)
         s_lastStatus = net::WsClient::Status::Connecting;
     if (status != s_lastStatus) {
         if (status == net::WsClient::Status::Connected) {
             uint64_t steamId = steam::MySteamId();
-            Send("hello", { { "name", GetConfig().name }, { "version", ProtocolVersion },
-                { "steam", steamId ? std::to_string(steamId) : "" } });
+            json hello = { { "name", GetConfig().name }, { "version", ProtocolVersion },
+                { "steam", steamId ? std::to_string(steamId) : "" },
+                { "resumable", true } }; // we reconnect with the token: the server may hold our slot after a drop
+            if (const std::string& avatar = ui::OwnAvatarBase64(); !avatar.empty())
+                hello["avatar"] = avatar; // avatar.png from the mod folder, for players without (or instead of) Steam's
+            if (s.reconnecting)
+                hello["resume"] = s_resumeToken;
+            Send("hello", std::move(hello));
         } else if (status == net::WsClient::Status::Disconnected && s.conn != Conn::Offline) {
             std::string err = s_ws.LastError();
             bool wasOnline = s.conn == Conn::Online;
             std::string room = s.inRoom ? s.roomName : std::string();
             Log("mp: disconnected (%s)", err.empty() ? "closed" : err.c_str());
-            s = State{};
-            if (wasOnline) {
-                s.connError = "Connection to the server was lost.";
-                s.rejoinRoom = room;
-                s.connLostAt = GetTickCount();
+            DWORD now = GetTickCount();
+            if (s.reconnecting && (int)(s_reconnectUntil - now) > 0) {
+                s_nextAttempt = now + std::min<DWORD>(1000u << std::min(s_attempts++, 3), 8000); // 1, 2, 4, 8, 8... s
+            } else if (!s.reconnecting && wasOnline && s.inRoom && !s_resumeToken.empty()) {
+                // Keep the room and the round as they are and try to get our place back.
+                s.reconnecting = true;
+                s.connLostAt = now;
+                s_reconnectUntil = now + ReconnectWindowMs;
+                s_attempts = 0;
+                s_nextAttempt = now + 1000;
+                AddChat(ChatLine::System, "", "Connection lost, reconnecting...");
             } else {
-                s.connError = "Couldn't reach the server. Check the address, or ask the host if their server is running.";
+                s_resumeToken.clear();
+                s = State{};
+                if (wasOnline) {
+                    s.connError = "Connection to the server was lost.";
+                    s.rejoinRoom = room;
+                    s.connLostAt = GetTickCount();
+                } else {
+                    s.connError = "Couldn't reach the server. Check the address, or ask the host if their server is running.";
+                }
             }
         }
         s_lastStatus = status;
@@ -607,6 +881,15 @@ void Tick()
         }
     }
 
+    // The host's start was never confirmed: don't hold the loading screen for a round the server may not have.
+    if (s_hostStartSent && GetTickCount() - s_hostStartAt > HostStartAckMs) {
+        s_hostStartSent = false;
+        s_hostStartAbandoned = true;
+        DisarmBarrier();
+        AddChat(ChatLine::Error, "", "The server didn't confirm the round start, so this song plays solo.");
+        Log("mp: no answer to our start after %lu ms: released, playing solo", (unsigned long)HostStartAckMs);
+    }
+
     // Loading barrier.
     if (s.inRound) {
         if (sync::IsHolding()) {
@@ -633,9 +916,24 @@ void Tick()
     pause::SetGuardActive(s.inRound && g_session.inSong && sync::ReadState().outer == 1 && !pause::GetState().paused);
 
     // Live score reporting.
-    if (s.inRound && g_session.inSong && !s_finishSent && GetTickCount() - s_lastScoreSent >= ScoreIntervalMs) {
-        s_lastScoreSent = GetTickCount();
-        Send("score", ScoreJson());
+    {
+        const size_t backlog = s_ws.Backlog();
+        const DWORD now = GetTickCount();
+        if (backlog >= 2 && s_scoreLevel < 2 && now - s_scoreLevelAt > 500) {
+            s_scoreLevel++;
+            s_scoreLevelAt = now;
+            Log("mp: slow link (%zu messages waiting), live scores now %d Hz", backlog, s_scoreLevel == 1 ? 5 : 3);
+        } else if (backlog == 0 && s_scoreLevel > 0 && now - s_scoreLevelAt > 4000) {
+            s_scoreLevel--;
+            s_scoreLevelAt = now;
+            Log("mp: link calm again, live scores now %d Hz", s_scoreLevel == 0 ? 10 : 5);
+        }
+        // Never queue a score behind others that haven't gone out: the next one is newer anyway.
+        if (s.inRound && g_session.inSong && !s_finishSent && backlog < 3
+            && now - s_lastScoreSent >= ScoreIntervalMs[s_scoreLevel]) {
+            s_lastScoreSent = now;
+            Send("score", ScoreJson());
+        }
     }
 }
 

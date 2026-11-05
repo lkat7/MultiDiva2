@@ -1,6 +1,7 @@
 #include "multiplayer_ui.h"
 #include "avatars.h"
 #include "bug_report.h"
+#include "game_sprites.h"
 #include "glyphs.h"
 #include "input_block.h"
 #include "leaderboard.h"
@@ -8,10 +9,12 @@
 #include "room_scene.h"
 #include "overlay.h"
 #include "../core/config.h"
+#include "../core/version.h"
 #include "../game/launch.h"
 #include "../game/memory.h"
 #include "../game/pause_guard.h"
 #include "../game/session.h"
+#include "../game/songs.h"
 #include "../game/steam.h"
 #include "../game/sync_start.h"
 #include "../game/titles.h"
@@ -27,6 +30,8 @@
 #include <cstring>
 #include <imgui.h>
 #include <imgui_internal.h>
+#include <array>
+#include <map>
 
 namespace md::ui {
 
@@ -58,6 +63,59 @@ static std::string PickName(const mp::Pick& p)
 {
     std::string title = !p.title.empty() ? p.title : titles::Describe(p.pv);
     return title + " (" + (p.edition ? "Extra " : "") + DifficultyName(p.difficulty) + ")";
+}
+
+// "Extreme  9.5   BPM 160" for the pick, with the difficulty's colour; the level and tempo only when the game's
+// database gave a sane value (songs::Level / songs::Bpm).
+static std::string PickDetail(const mp::Pick& p, ImVec4& color)
+{
+    int d = p.edition ? 4 : p.difficulty;
+    color = ImGui::ColorConvertU32ToFloat4(DifficultyColor(d));
+    std::string text = DifficultyName(d);
+    float level = songs::Level(p.pv, p.difficulty, p.edition);
+    if (level > 0) {
+        char lv[24];
+        snprintf(lv, sizeof(lv), "  %.1f", level);
+        text += lv;
+    }
+    int bpm = songs::Bpm(p.pv);
+    if (bpm > 0)
+        text += "   BPM " + std::to_string(bpm);
+    return text;
+}
+
+// The charts a song has, by difficulty 0..3 and the extra chart (4): -1 = none, 0 = exists (level unknown), else stars.
+// Which charts exist comes from the game's song database like the "missing song" check does; levels need songs::Level.
+static std::array<float, 5> SongCharts(int32_t pv)
+{
+    static std::map<int32_t, std::array<float, 5>> cache; // the song database doesn't change while the game runs
+    auto it = cache.find(pv);
+    if (it != cache.end())
+        return it->second;
+    std::array<float, 5> out = { -1, -1, -1, -1, -1 };
+    for (int i = 0; i < 5; i++) {
+        int diff = i < 4 ? i : 3, edition = i < 4 ? 0 : 1;
+        if (!songs::Has(pv, diff, edition))
+            continue;
+        float level = songs::Level(pv, diff, edition);
+        if (level == 0)
+            continue; // an empty slot (the game greys it out): the song doesn't have this chart
+        out[i] = level > 0 ? level : 0;
+    }
+    return cache[pv] = out;
+}
+
+// The song's cover (the game's own jacket, loaded on demand) as a square of `size` pixels at the cursor, or a plain
+// grey square while it isn't loaded or the song isn't installed. Takes the square's place in the layout.
+static void DrawJacket(int32_t pv, float size)
+{
+    ImVec2 a = ImGui::GetCursorScreenPos(), b(a.x + size, a.y + size);
+    ImGui::Dummy(ImVec2(size, size));
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    if (const sprites::Sprite* jacket = pv >= 0 ? sprites::Jacket(pv) : nullptr)
+        sprites::Draw(dl, *jacket, a, b);
+    else
+        dl->AddRectFilled(a, b, IM_COL32(60, 62, 70, 255), 4);
 }
 
 static void InputString(const char* label, std::string& value, size_t max)
@@ -241,11 +299,11 @@ static void DrawPlayers(const mp::State& s)
     float widest = ImGui::CalcTextSize("song in progress").x;
     for (const mp::Player& p : s.players)
         widest = ImMax(widest, ImGui::CalcTextSize((p.name + " (you)").c_str()).x);
-    fit::Stretchy stretchy(avatar + style.ItemSpacing.x + widest + 60 + 120 + style.CellPadding.x * 6);
+    fit::Stretchy stretchy(avatar + style.ItemSpacing.x + widest + 100 + 120 + style.CellPadding.x * 6);
     if (!ImGui::BeginTable("players", 3, ImGuiTableFlags_RowBg))
         return;
     ImGui::TableSetupColumn("name", ImGuiTableColumnFlags_WidthStretch);
-    ImGui::TableSetupColumn("role", ImGuiTableColumnFlags_WidthFixed, 60);
+    ImGui::TableSetupColumn("role", ImGuiTableColumnFlags_WidthFixed, 100);
     ImGui::TableSetupColumn("status", ImGuiTableColumnFlags_WidthFixed, 120);
     for (const mp::Player& p : s.players) {
         ImGui::PushID(p.id);
@@ -275,9 +333,18 @@ static void DrawPlayers(const mp::State& s)
         ImGui::AlignTextToFramePadding();
         if (p.id == s.hostId)
             ImGui::TextColored(Gold, "host");
+        if (p.wins > 0) {
+            if (p.id == s.hostId)
+                ImGui::SameLine();
+            ImGui::TextColored(Gold, p.wins == 1 ? "%d win" : "%d wins", p.wins); // rounds won in this room
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%d of %d rounds won in this room", p.wins, s.rounds);
+        }
         ImGui::TableSetColumnIndex(2);
         ImGui::AlignTextToFramePadding();
-        if (p.missing && !p.playing)
+        if (p.away)
+            ImGui::TextColored(Gold, "reconnecting");
+        else if (p.missing && !p.playing)
             ImGui::TextColored(Bad, "no song");
         else if (p.playing)
             ImGui::TextColored(Accent, "playing");
@@ -316,10 +383,56 @@ static void DrawRoundStatus(const mp::State& s)
         std::string title = titles::Find(s.hover);
         if (title.empty())
             title = !s.hoverTitle.empty() ? s.hoverTitle : titles::Describe(s.hover);
-        if (mp::IsHost())
-            ImGui::TextColored(Dim, "Highlighted: %s", title.c_str());
-        else
-            ImGui::TextColored(Dim, "The host is looking at: %s", title.c_str());
+        // The cover on the left, the song's lines to its right.
+        DrawJacket(s.hover, ImGui::GetFrameHeightWithSpacing() * 1.5f); // half the height of its three lines
+        ImGui::SameLine();
+        ImGui::BeginGroup();
+        ImGui::TextColored(Dim, "%s", mp::IsHost() ? "Highlighted:" : "The host is looking at:");
+        ImGui::SameLine();
+        ImGui::TextUnformatted(title.c_str()); // the song's title in white
+        if (int bpm = songs::Bpm(s.hover); bpm > 0) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.45f, 0.45f, 0.49f, 1.0f), "  BPM %d", bpm); // greyer than the chart names
+        }
+        // Its charts as chips in its difficulty's colour, muted (with the level when the game's database gives it).
+        // The chart the host has selected is filled; the others are faint grey (all tinted while the selection is unknown).
+        static const char* names[] = { "Easy", "Normal", "Hard", "Extreme", "Extra" };
+        std::array<float, 5> charts = SongCharts(s.hover);
+        int selected = s.hoverDifficulty < 0 ? -1 : s.hoverEdition == 1 ? 4 : s.hoverDifficulty;
+        const ImGuiStyle& style = ImGui::GetStyle();
+        const float chipH = ImGui::GetFrameHeight(), padX = style.FramePadding.x * 0.9f, round = chipH * 0.3f;
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        for (int i = 0; i < 5; i++) {
+            if (charts[i] < 0)
+                continue;
+            char label[48];
+            if (charts[i] > 0)
+                snprintf(label, sizeof(label), "%s %.1f", names[i], charts[i]);
+            else
+                snprintf(label, sizeof(label), "%s", names[i]);
+            const bool on = i == selected, unknown = selected < 0;
+            ImVec4 base = ImGui::ColorConvertU32ToFloat4(DifficultyColor(i));
+            const ImVec4 grey(0.55f, 0.56f, 0.60f, 1.0f);
+            ImVec4 muted(base.x + (grey.x - base.x) * 0.40f, base.y + (grey.y - base.y) * 0.40f,
+                base.z + (grey.z - base.z) * 0.40f, 1.0f); // pulled toward grey so the chips stay calm
+            ImVec2 textSize = ImGui::CalcTextSize(label);
+            ImVec2 size(textSize.x + padX * 2, chipH);
+            ImVec2 at = ImGui::GetCursorScreenPos();
+            ImU32 fill = on ? ImGui::GetColorU32(ImVec4(muted.x, muted.y, muted.z, 0.55f))
+                : unknown ? ImGui::GetColorU32(ImVec4(muted.x, muted.y, muted.z, 0.30f))
+                          : ImGui::GetColorU32(ImVec4(1, 1, 1, 0.06f));
+            ImU32 ink = on ? ImGui::GetColorU32(ImVec4(1, 1, 1, 0.95f))
+                : unknown ? ImGui::GetColorU32(ImVec4(muted.x * 0.4f + 0.6f, muted.y * 0.4f + 0.6f, muted.z * 0.4f + 0.6f, 1.0f))
+                          : ImGui::GetColorU32(Dim);
+            dl->AddRectFilled(at, ImVec2(at.x + size.x, at.y + size.y), fill, round);
+            if (on)
+                dl->AddRect(at, ImVec2(at.x + size.x, at.y + size.y), ImGui::GetColorU32(ImVec4(muted.x, muted.y, muted.z, 0.9f)), round, 0, 1.0f);
+            dl->AddText(ImVec2(at.x + padX, at.y + (chipH - textSize.y) * 0.5f), ink, label);
+            ImGui::Dummy(size);
+            ImGui::SameLine(0, style.ItemSpacing.x * 0.6f);
+        }
+        ImGui::NewLine(); // ends the chip row
+        ImGui::EndGroup();
     }
     std::string missing;
     int missingCount = 0;
@@ -341,27 +454,20 @@ static void DrawRoundStatus(const mp::State& s)
             ImGui::TextColored(Accent, "Everyone is ready: start any song in song select to start the round.");
         else
             ImGui::TextColored(Dim, "Waiting for %d player%s to get ready.", notReady, notReady == 1 ? "" : "s");
-
-        // No one to play with: a bot player that joins this room and follows your score.
-        if (host::BotRunning()) {
-            if (ImGui::Button("Remove Miku Bot"))
-                host::StopBot();
-        } else if (ImGui::Button("Add Miku Bot")) {
-            host::StartBot(mp::ServerUrl(), s.roomName);
-        }
-        ImGui::SameLine();
-        ImGui::TextColored(Dim, "A practice opponent that stays close to your score.");
     } else {
         const mp::Player* me = mp::Me();
         bool ready = me && me->ready;
         if (ImGui::Checkbox("Ready", &ready))
             mp::SetReady(ready);
         ImGui::SameLine();
-        ImGui::TextColored(Dim, ready ? "Stay on song select: the song starts by itself." : "Tick when you're on song select.");
+        ImGui::TextColored(Dim, ready ? "Stay on song select: the song starts by itself." : "Tick when you're on song select; leaving it unreadies you.");
     }
 
-    if (s.pick)
+    if (s.pick) {
+        DrawJacket(s.pick->pv, ImGui::GetFrameHeight());
+        ImGui::SameLine();
         ImGui::TextColored(Dim, "Last song: %s", PickName(*s.pick).c_str());
+    }
 }
 
 static void DrawChat(const mp::State& s)
@@ -525,15 +631,27 @@ static void DrawScreens(bool* open)
         view.ownOutfits = cfg.ownOutfits;
         view.showLeaderboard = cfg.showLeaderboard;
         view.showGaps = cfg.showGaps;
+        view.browseSounds = cfg.browseSounds;
+        view.host = mp::IsHost() && s.roomState == "lobby";
+        view.accuracyMode = s.mode == "accuracy";
         // The plate follows the host's highlight in song select, else shows the last song played.
         view.songPv = s.hover >= 0 ? s.hover : s.pick ? s.pick->pv : -1;
         if (s.hover >= 0) {
             view.songTitle = titles::Find(s.hover);
             if (view.songTitle.empty())
                 view.songTitle = !s.hoverTitle.empty() ? s.hoverTitle : titles::Describe(s.hover);
+            view.songBpm = songs::Bpm(s.hover);
+            view.charts = SongCharts(s.hover);
+            if (s.hoverDifficulty >= 0) { // the chart the host has selected with left/right
+                view.selectedChart = s.hoverEdition == 1 ? 4 : s.hoverDifficulty;
+                view.songDifficulty = view.selectedChart; // the plate's difficulty chip follows it
+                view.songLevel = std::max(view.charts[view.selectedChart], -1.0f);
+            }
         } else if (s.pick) {
             view.songTitle = !s.pick->title.empty() ? s.pick->title : titles::Describe(s.pick->pv);
             view.songDifficulty = s.pick->edition ? 4 : s.pick->difficulty;
+            view.songLevel = songs::Level(s.pick->pv, s.pick->difficulty, s.pick->edition);
+            view.songBpm = songs::Bpm(s.pick->pv);
         } else {
             view.songHint = mp::IsHost() ? "Open song select to pick a song" : "The host is picking a song...";
         }
@@ -579,6 +697,13 @@ static void DrawScreens(bool* open)
             break;
         case RoomAction::ToggleGaps:
             cfg.showGaps = !cfg.showGaps;
+            SaveConfig();
+            break;
+        case RoomAction::ToggleMode:
+            mp::SetMode(s.mode == "accuracy" ? "score" : "accuracy");
+            break;
+        case RoomAction::ToggleBrowseSounds:
+            cfg.browseSounds = !cfg.browseSounds;
             SaveConfig();
             break;
         case RoomAction::ToggleOutfits:
@@ -715,6 +840,8 @@ void DrawLobby(bool* open)
         DrawConnect(s);
     } else if (!s.inRoom) {
         ImGui::Text("Connected as %s", GetConfig().name.c_str());
+        ImGui::TextColored(Dim, "Client %s   Server %s", MULTIDIVA_VERSION,
+            s.serverVersion.empty() ? "unknown (older)" : s.serverVersion.c_str());
         if (!s.roomNotice.empty())
             ImGui::TextColored(Bad, "%s", s.roomNotice.c_str());
         Config& cfg = GetConfig();
@@ -745,18 +872,54 @@ void DrawLobby(bool* open)
             if (ImGui::SmallButton("Disconnect"))
                 mp::Disconnect();
         }
+        if (s.reconnecting)
+            ImGui::TextColored(Gold, "Connection lost, reconnecting...");
         ImGui::Separator();
         DrawPlayers(s);
         ImGui::Separator();
         DrawRoundStatus(s);
+        ImGui::Separator(); // status above, options below
         Config& cfg = GetConfig();
+        if (mp::IsHost() && s.roomState == "lobby") {
+            // No one to play with: a bot player that joins this room and follows your score.
+            if (host::BotRunning()) {
+                if (ImGui::Button("Remove Miku Bot"))
+                    host::StopBot();
+            } else if (ImGui::Button("Add Miku Bot")) {
+                host::StartBot(mp::ServerUrl(), s.roomName);
+            }
+            ImGui::SameLine();
+            ImGui::TextColored(Dim, "A practice opponent that stays close to your score.");
+        }
+        // How the room ranks players: the host picks (in the lobby), everyone sees it.
+        if (mp::IsHost() && s.roomState == "lobby") {
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted("Win by");
+            ImGui::SameLine();
+            if (ImGui::RadioButton("Score", s.mode != "accuracy"))
+                mp::SetMode("score");
+            ImGui::SameLine();
+            if (ImGui::RadioButton("Accuracy", s.mode == "accuracy"))
+                mp::SetMode("accuracy");
+            ImGui::SameLine();
+            ImGui::TextColored(Dim, s.mode == "accuracy" ? "The highest completion %% wins; score breaks a tie."
+                                                           : "The highest score wins.");
+        } else if (s.mode == "accuracy") {
+            ImGui::TextColored(Dim, "Ranked by accuracy: the highest completion %% wins.");
+        }
         if (ImGui::Checkbox("Live leaderboard", &cfg.showLeaderboard))
             SaveConfig();
         ImGui::SameLine();
         if (ImGui::Checkbox("Score gaps", &cfg.showGaps))
             SaveConfig();
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("The other players' cards show how far ahead or behind you they are, not their whole score.");
         ImGui::SameLine();
         ImGui::TextColored(Dim, "(F9 hides everything)");
+        if (ImGui::Checkbox("Browse sounds", &cfg.browseSounds))
+            SaveConfig();
+        ImGui::SameLine();
+        ImGui::TextColored(Dim, "Hear the cursor and difficulty sounds when the host browses songs.");
         if (ImGui::Checkbox("My own outfits", &cfg.ownOutfits))
             SaveConfig();
         ImGui::SameLine();
@@ -790,8 +953,13 @@ static void DrawResults(const mp::State& s)
         ImGui::End();
         return;
     }
-    if (s.pick)
+    if (s.pick) {
         ImGui::TextColored(Accent, "%s", PickName(*s.pick).c_str());
+        ImVec4 detailColor;
+        std::string detail = PickDetail(*s.pick, detailColor);
+        ImGui::SameLine();
+        ImGui::TextColored(detailColor, "%s", detail.c_str());
+    }
     if (ImGui::BeginTable("results", 7, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingFixedFit)) {
         ImGui::TableSetupColumn("#");
         ImGui::TableSetupColumn("Player");
@@ -860,15 +1028,66 @@ static void DrawWaitingBanner(const mp::State& s)
         ImGui::TextColored(Accent, "Waiting for players...  %d / %d loaded", loaded, total);
         for (const mp::Player& p : s.players)
             if (p.playing && !p.loaded)
-                ImGui::TextColored(Dim, "  %s", p.name.c_str());
+                ImGui::TextColored(Dim, p.away ? "  %s (reconnecting)" : "  %s", p.name.c_str());
     }
     ImGui::End();
+}
+
+// The 3-2-1 before the round is released (everyone has loaded): the number pops in large and fades out over its
+// 0.5 s, centred above the middle of the screen.
+static void DrawCountdown(const mp::State& s)
+{
+    constexpr float StepMs = 500.0f;
+    float t = (float)(GetTickCount() - s.countdownAt) / StepMs;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    float pop = t < 0.25f ? 1.0f + 0.12f * (1.0f - t / 0.25f) * (1.0f - t / 0.25f) : 1.0f; // eases down to size
+    float alpha = t < 0.7f ? 1.0f : 1.0f - (t - 0.7f) / 0.3f;
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImFont* font = GetFonts().countdown ? GetFonts().countdown : ImGui::GetFont();
+    const float size = CountdownFontPx(vp->Size.y) * pop; // the font is baked at this size: sharp at 1.0, a touch soft in the pop
+    char text[8];
+    snprintf(text, sizeof(text), "%d", s.countdown);
+    ImVec2 box = font->CalcTextSizeA(size, FLT_MAX, 0.0f, text);
+    ImVec2 pos(vp->Pos.x + (vp->Size.x - box.x) * 0.5f, vp->Pos.y + vp->Size.y * 0.42f - box.y * 0.5f);
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    const float shadow = size * 0.03f;
+    dl->AddText(font, size, ImVec2(pos.x + shadow, pos.y + shadow), ImGui::GetColorU32(ImVec4(0.0f, 0.0f, 0.0f, 0.55f * alpha)), text);
+    dl->AddText(font, size, pos, ImGui::GetColorU32(ImVec4(0.22f, 0.77f, 0.73f, alpha)), text);
+}
+
+// A short notice over the game (a song start that was refused, a new host): visible with a controller too, where the
+// F8 window and its chat are not on screen.
+static void DrawToast(const mp::State& s)
+{
+    constexpr DWORD ShowMs = 4000;
+    if (s.toast.empty() || GetTickCount() - s.toastAt > ShowMs)
+        return;
+    const float age = (float)(GetTickCount() - s.toastAt);
+    const float alpha = age < ShowMs - 600 ? 1.0f : (ShowMs - age) / 600.0f; // fades out
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(vp->Pos.x + vp->Size.x * 0.5f, vp->Pos.y + vp->Size.y * 0.14f), ImGuiCond_Always,
+        ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowBgAlpha(0.85f * alpha);
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs
+        | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ImGui::GetFontSize() * 1.2f, ImGui::GetFontSize() * 0.7f));
+    if (ImGui::Begin("##toast", nullptr, flags)) {
+        ImFont* font = GetFonts().cardName ? GetFonts().cardName : ImGui::GetFont();
+        ImGui::PushFont(font);
+        ImGui::TextColored(Gold, "%s", s.toast.c_str());
+        ImGui::PopFont();
+    }
+    ImGui::End();
+    ImGui::PopStyleVar(2);
 }
 
 // The connection dropped while the screens weren't open (in a song, or F8 hidden): say so for a few seconds.
 static void DrawConnectionLost(const mp::State& s)
 {
-    if (!s.connLostAt || GetTickCount() - s.connLostAt > 8000 || s_screenFrame == ImGui::GetFrameCount())
+    if (s_screenFrame == ImGui::GetFrameCount())
+        return;
+    if (!s.reconnecting && (!s.connLostAt || GetTickCount() - s.connLostAt > 8000))
         return;
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(ImVec2(vp->Pos.x + vp->Size.x * 0.5f, vp->Pos.y + vp->Size.y * 0.16f), ImGuiCond_Always,
@@ -878,8 +1097,11 @@ static void DrawConnectionLost(const mp::State& s)
         | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
     if (ImGui::Begin("##connlost", nullptr, flags)) {
         ImGui::TextColored(Bad, "Connection to the multiplayer server lost.");
-        ImGui::TextColored(Dim, g_session.inSong ? "The song goes on as a solo play. F8 after it to rejoin."
-                                                 : "Press F8 to rejoin.");
+        if (s.reconnecting)
+            ImGui::TextColored(Dim, "Reconnecting...");
+        else
+            ImGui::TextColored(Dim, g_session.inSong ? "The song goes on as a solo play. F8 after it to rejoin."
+                                                     : "Press F8 to rejoin.");
     }
     ImGui::End();
 }
@@ -892,6 +1114,7 @@ void RequestGlyphs()
     glyphs::RequestText(s.roomName);
     if (s.pick)
         glyphs::RequestText(PickName(*s.pick));
+    glyphs::RequestText(s.toast);
     for (const mp::Player& p : s.players)
         glyphs::RequestText(p.name);
     for (const mp::LiveScore& p : s.scores)
@@ -908,15 +1131,20 @@ void DrawRoundOverlays()
 {
     DrawPauseHint();
     const mp::State& s = mp::Get();
-    if (s.inRound && sync::IsHolding())
-        DrawWaitingBanner(s);
+    if (s.inRound && sync::IsHolding()) {
+        if (s.countdown > 0)
+            DrawCountdown(s);
+        else
+            DrawWaitingBanner(s);
+    }
     if (!s.inRound)
         ResetLeaderboard();
-    else if (GetConfig().showLeaderboard && g_session.inSong && !s.scores.empty())
-        DrawLeaderboard(s);
+    else if (GetConfig().showLeaderboard && (g_session.inSong || s.finishedSelf || sync::IsHolding()) && !s.showResults && !s.scores.empty())
+        DrawLeaderboard(s); // also after we failed or quit: the others are still playing
     if (s.showResults && !g_session.inSong)
         DrawResults(s);
     DrawConnectionLost(s);
+    DrawToast(s);
 }
 
 } // namespace md::ui

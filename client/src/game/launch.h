@@ -51,6 +51,9 @@ bool OwnModules(int32_t pv, int32_t (&modules)[6]);
 
 // The song select "enter" sound, which StartNow plays in place of the skipped Start press. OnFrame only.
 void PlayStartSound();
+// Any of the game's sound effects by name (the names are in its data: se_ft_music_selector_select_01 is the song
+// cursor, se_ft_music_selector_difficulty_change_01 the difficulty change). Game thread only; unknown names are silent.
+void PlayGameSound(const char* name);
 
 // Game thread only, called by the PvGameInitPv hook right before the game reads the stage entry.
 // Applies an armed request (then disarms) and records the final block as the last launch.

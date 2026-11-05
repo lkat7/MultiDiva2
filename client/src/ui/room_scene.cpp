@@ -2,12 +2,15 @@
 #include "avatars.h"
 #include "game_sprites.h"
 #include "overlay.h"
+#include "../core/log.h"
+#include "../core/version.h"
 #include "../game/titles.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cfloat>
 #include <cmath>
+#include <vector>
 #include <imgui.h>
 #include <initializer_list>
 #include <map>
@@ -68,12 +71,20 @@ struct Style {
     ImU32 shadow = 0;   // drop shadow down-right, like the game's headings
 };
 
+// The overlay font used while the game's own font isn't available (never null: the screens used to crash on a null
+// scene font whenever the game's font sheet hadn't been found).
+ImFont* FallbackFont()
+{
+    const Fonts& f = GetFonts();
+    return f.sceneButton ? f.sceneButton : f.regular ? f.regular : ImGui::GetFont();
+}
+
 float TextW(const Style& st, const char* text)
 {
     float sp = st.spacing < 0 ? st.px * sprites::TitleSpacingOfSize : st.spacing;
     if (sprites::TextReady(st.font))
         return sprites::TextWidth(st.font, text, st.px, sp) + st.weight;
-    return GetFonts().sceneButton->CalcTextSizeA(st.px, FLT_MAX, 0, text).x;
+    return FallbackFont()->CalcTextSizeA(st.px, FLT_MAX, 0, text).x;
 }
 
 void Text(const Ctx& c, float x, float y, const char* text, const Style& st, float alpha = 1)
@@ -81,6 +92,11 @@ void Text(const Ctx& c, float x, float y, const char* text, const Style& st, flo
     float px = st.px * c.s;
     float sp = (st.spacing < 0 ? st.px * sprites::TitleSpacingOfSize : st.spacing) * c.s;
     bool game = sprites::TextReady(st.font);
+    static bool s_loggedFallback = false;
+    if (!game && !s_loggedFallback) {
+        s_loggedFallback = true;
+        Log("screens: the game's font isn't available yet, drawing text with the overlay font");
+    }
     auto draw = [&](float dx, float dy, ImU32 col) {
         ImVec2 p = c.P(x, y);
         p.x += dx;
@@ -88,7 +104,7 @@ void Text(const Ctx& c, float x, float y, const char* text, const Style& st, flo
         if (game)
             sprites::DrawText(c.dl, st.font, p, text, px, Alpha(col, alpha), sp);
         else
-            c.dl->AddText(GetFonts().sceneButton, px, p, Alpha(col, alpha), text);
+            c.dl->AddText(FallbackFont(), px, p, Alpha(col, alpha), text);
     };
     float heavy = st.weight * c.s;
     if (st.shadow)
@@ -141,6 +157,8 @@ Hit HitTest(const Ctx& c, int key, float x, float y, float w, float h)
 // red; not ready stays grey. Drawn from the star-less grey bar, recolored (the stars made rows look like songs).
 ImU32 BarColor(const mp::State& s, const mp::Player& p)
 {
+    if (p.away)
+        return IM_COL32(90, 94, 104, 255);
     if (p.missing)
         return IM_COL32(218, 0, 30, 255);
     if (p.playing)
@@ -164,6 +182,8 @@ void Bar(const Ctx& c, ImU32 color, bool sel, float x, float y, float scale, flo
 
 const char* StatusText(const mp::State& s, const mp::Player& p)
 {
+    if (p.away)
+        return "Reconnecting...";
     if (p.missing)
         return "No song";
     if (p.playing)
@@ -255,7 +275,10 @@ Hit PlayerRow(const Ctx& c, const mp::State& s, const mp::Player& p, float x, fl
     line.color = White;
     line.outline = IM_COL32(0, 0, 0, 110);
     line.outlineW = 2;
-    Text(c, lx(Normal.lineX, Selected.lineX), ly(Normal.lineY, Selected.lineY), StatusText(s, p), line);
+    std::string status = StatusText(s, p);
+    if (p.wins > 0) // the session scoreboard: rounds won in this room
+        status += p.wins == 1 ? "  -  1 win" : "  -  " + std::to_string(p.wins) + " wins";
+    Text(c, lx(Normal.lineX, Selected.lineX), ly(Normal.lineY, Selected.lineY), status.c_str(), line);
     if (!canHover)
         hit = Hit{};
     return hit;
@@ -295,6 +318,80 @@ void SongCard(const Ctx& c, const mp::State& s, const RoomView& view, float x, f
         // Plate: 876x98 at 0.82 -> white area ends ~705 px in, middle at 40 px; chip 184x52 at 0.9.
         Spr(c, set::SongSelect, chips[std::clamp(view.songDifficulty, 0, 4)], x - 140 + 705 - margin - chipW,
             py + 40 - chipH / 2, 0.9f);
+    }
+    // A highlight has no difficulty yet: list the song's charts, each in its colour.
+    bool hasCharts = false;
+    for (float lv : view.charts)
+        hasCharts |= lv >= 0;
+    if (hasCharts || (view.songDifficulty < 0 && view.songBpm > 0)) {
+        static const char* short_[] = { "Easy", "Normal", "Hard", "Extreme", "Extra" };
+        struct Piece { std::string text; ImU32 color; bool selected; };
+        std::vector<Piece> pieces;
+        for (int i = 0; i < 5; i++) {
+            if (view.charts[i] < 0)
+                continue;
+            std::string t = short_[i];
+            if (view.charts[i] > 0) {
+                char lv[16];
+                snprintf(lv, sizeof(lv), " %.1f", view.charts[i]);
+                t += lv;
+            }
+            // Only the selected chart keeps its colour; the others are grey (all coloured while the selection is unknown).
+            bool grey = view.selectedChart >= 0 && i != view.selectedChart;
+            pieces.push_back({ t, grey ? IM_COL32(150, 152, 160, 255) : DifficultyColor(i), i == view.selectedChart });
+        }
+        if (view.songBpm > 0)
+            pieces.push_back({ "BPM " + std::to_string(view.songBpm), White, false });
+        Style d;
+        d.font = Font::Bold;
+        d.px = 32;
+        d.outline = IM_COL32(0, 0, 0, 170);
+        d.outlineW = 2;
+        const float room = 705 - 60, gapW = 24;
+        auto total = [&]() {
+            float w = -gapW;
+            for (const Piece& p : pieces)
+                w += TextW(d, p.text.c_str()) + gapW;
+            return w;
+        };
+        while (d.px > 20 && total() > room) // many charts with levels: shrink to fit the plate
+            d.px -= 1;
+        float cx = x - 90;
+        for (const Piece& p : pieces) {
+            float w = TextW(d, p.text.c_str());
+            if (p.selected) { // the chart the host has selected: a tinted tab behind it
+                c.dl->AddRectFilled(c.P(cx - 10, py + 98 - 4), c.P(cx + w + 10, py + 98 + d.px + 8),
+                    (p.color & 0x00FFFFFF) | 0x66000000, 8 * c.s);
+                c.dl->AddRect(c.P(cx - 10, py + 98 - 4), c.P(cx + w + 10, py + 98 + d.px + 8), p.color, 8 * c.s, 0, 2);
+            }
+            d.color = p.color;
+            Text(c, cx, py + 98, p.text.c_str(), d);
+            cx += w + gapW;
+        }
+        py += 44;
+    }
+    // Difficulty (in its colour), level and tempo under the plate (a picked song; a highlight has the chart row above).
+    if (view.songDifficulty >= 0 && !hasCharts) {
+        static const char* names[] = { "Easy", "Normal", "Hard", "Extreme", "Extra Extreme" };
+        std::string info;
+        if (view.songDifficulty >= 0 && view.songDifficulty < 5) {
+            info = names[view.songDifficulty];
+            if (view.songLevel > 0) {
+                char lv[24];
+                snprintf(lv, sizeof(lv), "  %.1f", view.songLevel);
+                info += lv;
+            }
+        }
+        if (view.songBpm > 0)
+            info += std::string(info.empty() ? "" : "     ") + "BPM " + std::to_string(view.songBpm);
+        Style d;
+        d.font = Font::Bold;
+        d.px = 34;
+        d.color = view.songDifficulty >= 0 ? DifficultyColor(view.songDifficulty) : White;
+        d.outline = IM_COL32(0, 0, 0, 170);
+        d.outlineW = 2;
+        Text(c, x - 90, py + 98, info.c_str(), d);
+        py += 44; // the status line moves down
     }
     if (!view.status.empty()) {
         Style h;
@@ -622,13 +719,16 @@ void SettingsMenu(const Ctx& c, const RoomView& view, RoomAction& action)
         ImVec2 at = ImGui::GetWindowPos();
         Ctx m{ ImGui::GetWindowDrawList(), c.o, c.s };
         float x = (at.x - c.o.x) / c.s, y = (at.y - c.o.y) / c.s;
-        const float w = 470, h = 22 + 3 * 72 + 10;
+        struct Row { const char* label; RoomAction::Kind kind; };
+        std::vector<Row> rows;
+        if (view.host) // only the host picks how the room ranks players
+            rows.push_back({ view.accuracyMode ? "Win by: accuracy" : "Win by: score", RoomAction::ToggleMode });
+        rows.push_back({ view.ownOutfits ? "Outfits: my own" : "Outfits: the host's", RoomAction::ToggleOutfits });
+        rows.push_back({ view.showLeaderboard ? "Live leaderboard: on" : "Live leaderboard: off", RoomAction::ToggleLeaderboard });
+        rows.push_back({ view.showGaps ? "Score gaps: on" : "Score gaps: off", RoomAction::ToggleGaps });
+        rows.push_back({ view.browseSounds ? "Browse sounds: on" : "Browse sounds: off", RoomAction::ToggleBrowseSounds });
+        const float w = 470, h = 22 + (float)rows.size() * 72 + 10;
         m.dl->AddRectFilled(m.P(x, y), m.P(x + w, y + h), IM_COL32(20, 30, 50, 225), 12 * c.s);
-        struct Row { const char* label; RoomAction::Kind kind; } rows[] = {
-            { view.ownOutfits ? "Outfits: my own" : "Outfits: the host's", RoomAction::ToggleOutfits },
-            { view.showLeaderboard ? "Live leaderboard: on" : "Live leaderboard: off", RoomAction::ToggleLeaderboard },
-            { view.showGaps ? "Score gaps: on" : "Score gaps: off", RoomAction::ToggleGaps },
-        };
         float ry = y + 22;
         int key = 210;
         for (const Row& r : rows) {
@@ -645,6 +745,18 @@ void SettingsMenu(const Ctx& c, const RoomView& view, RoomAction& action)
 }
 
 } // namespace
+
+unsigned int DifficultyColor(int d)
+{
+    switch (d) {
+    case 0: return IM_COL32(90, 200, 255, 255);  // easy: blue
+    case 1: return IM_COL32(110, 225, 90, 255);  // normal: green
+    case 2: return IM_COL32(255, 190, 60, 255);  // hard: orange
+    case 3: return IM_COL32(255, 85, 100, 255);  // extreme: red
+    case 4: return IM_COL32(205, 120, 255, 255); // extra extreme: purple
+    }
+    return IM_COL32(255, 255, 255, 255);
+}
 
 RoomAction DrawRoomScene(const mp::State& s, const RoomView& view)
 {
@@ -835,9 +947,19 @@ ConnectAction DrawConnectScene(const mp::State& s, ConnectView& v)
         st.font = Font::Thin;
         st.px = 30;
         st.spacing = 1;
-        std::string state = online ? "Connected to  " + v.serverShown : connecting ? "Connecting..." : "Not connected";
-        st.color = online ? IM_COL32(150, 240, 230, 255) : IM_COL32(220, 225, 235, 255);
+        std::string state = s.reconnecting ? "Connection lost, reconnecting..."
+            : online ? "Connected to  " + v.serverShown : connecting ? "Connecting..." : "Not connected";
+        st.color = s.reconnecting ? IM_COL32(255, 190, 90, 255)
+            : online ? IM_COL32(150, 240, 230, 255) : IM_COL32(220, 225, 235, 255);
         Text(c, 1880 - TextW(st, state.c_str()), 40, state.c_str(), st);
+
+        // Both releases, so a mismatch is easy to spot when something doesn't work.
+        std::string ver = std::string("Client ") + MULTIDIVA_VERSION;
+        if (online)
+            ver += "   Server " + (s.serverVersion.empty() ? std::string("unknown (older)") : s.serverVersion);
+        st.px = 24;
+        st.color = IM_COL32(190, 198, 212, 255);
+        Text(c, 1880 - TextW(st, ver.c_str()), 86, ver.c_str(), st);
     }
 
     const float top = 170, cardH = 640;
