@@ -8,10 +8,10 @@ Join a room with friends, the host picks a song, and it starts for everyone at t
 
 ## Features
 
-- Rooms with chat, a host, and a ready check. Leaving song select unreadies you, and readying, unreadying and a new host play the game's own sounds
-- The host plays any song in song select and it starts for everyone in the room, all at the same moment, after a 3-2-1 countdown (with an optional tick sound, in Ctrl+F8)
+- Rooms with chat, a host, and a ready check. Leaving song select unreadies you, and readying, unreadying, someone leaving and a new host play the game's own sounds
+- The host plays any song in song select and it starts for everyone in the room, all at the same moment, after a 3-2-1 countdown; if someone is slow to load, the host can press Enter on the loading screen to start without them (with an optional tick sound, in Ctrl+F8)
 - In a room only the host can start a song, and only when everyone is ready: confirm in song select is refused otherwise, with a notice on screen (the host presses confirm again within 5 seconds to start anyway)
-- A live leaderboard during the song (it can be hidden): your own card is wider and outlined, the others show how far ahead or behind you they are (Score gaps, on by default), and a player whose updates stop for 2 seconds shows a LAG chip while one still loading shows "loading". Shared results afterwards, and round wins counted per room ("2 wins")
+- A live leaderboard during the song (it can be hidden): your own card is wider and outlined, the others show how far ahead or behind you they are (Score gaps, on by default), and a player whose updates stop for 2 seconds, or whose song still hasn't started 2 seconds after the countdown, shows a LAG chip while one still loading shows "loading". Shared results afterwards, and round wins counted per room ("2 wins")
 - The host can rank the room by score (default) or by accuracy ("Win by" in the room options)
 - The host's highlighted song shows with its cover, BPM and the charts it has as muted difficulty chips, with the chart the host selected filled in; browsing the list and changing the difficulty plays the game's cursor sounds for everyone else
 - Everyone plays with their own outfits, or with the host's

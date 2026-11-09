@@ -46,6 +46,7 @@ static DWORD s_lastScoreSent = 0;
 static bool s_finishSent = false;
 static bool s_hostStartSent = false; // we sent `start` and wait for its echo
 static DWORD s_hostStartAt = 0;
+static bool s_toldLeftOut = false; // we were told the round started without us (too slow to load)
 static bool s_forceStart = false; // the host pressed confirm twice with players not ready: the next start is forced
 static DWORD s_forceStartAt = 0;
 static bool s_playRefusal = false; // play the "no" sound from Tick (the gate runs inside the game's button check)
@@ -59,7 +60,8 @@ static constexpr DWORD HoverIntervalMs = 150;
 static void ReportHave();
 
 // Loading barrier: hold on NOW LOADING until the server says everyone has loaded.
-static constexpr DWORD HoldSafetyMs = 45000; // release on our own if the server never answers
+// Release on our own if the server never answers: longer than the server's own wait for slow loaders (-load-timeout, 90 s).
+static constexpr DWORD HoldSafetyMs = 120000;
 static bool s_loadedSent = false;
 static bool s_goReceived = false;
 static DWORD s_holdSince = 0;
@@ -265,6 +267,7 @@ void JoinRoom(const std::string& room)
 }
 void SetReady(bool ready) { Send("ready", { { "ready", ready } }); }
 void DismissResults() { s.showResults = false; }
+void SkipSlowPlayers() { Send("skip"); }
 void SetMode(const std::string& mode)
 {
     if (mode == "score" || mode == "accuracy")
@@ -334,6 +337,13 @@ static void OnRoom(const json& d)
     s.focus = d.value("focus", -1);
     s.rounds = d.value("rounds", 0);
     s.mode = d.value("mode", "score");
+    // The host started without us (we were too slow to load): our song plays on its own, not as part of the round.
+    if (!s_toldLeftOut && (s.inRound || s.startPending) && s.roomState == "playing")
+        for (const Player& p : s.players)
+            if (p.id == s.myId && !p.playing) {
+                s_toldLeftOut = true;
+                Toast("The host started without you: your song plays on its own");
+            }
     // Someone readied or unreadied: the game's confirm / cancel sounds. Not for the first snapshot of a room, not when a
     // round starts or ends (that clears everybody's ready flag at once), not in a song.
     if (wasInRoom && prevRoomState == "lobby" && s.roomState == "lobby" && !s.inRound && !g_session.inSong) {
@@ -348,6 +358,19 @@ static void OnRoom(const json& d)
             launch::PlayGameSound("se_ft_sys_enter_01");
         else if (unreadied)
             launch::PlayGameSound("se_ft_sys_cansel_01"); // (the game's own spelling)
+    }
+    // Someone left the room (or was kicked, or their held place timed out): the game's dialog-close sound. When the host
+    // left, the new-host sound below covers it.
+    if (wasInRoom && prevHost == s.hostId && !s.inRound && !g_session.inSong) {
+        for (const Player& before : prevPlayers) {
+            bool still = false;
+            for (const Player& now : s.players)
+                still |= now.id == before.id;
+            if (!still && before.id != s.myId) {
+                launch::PlayGameSound("se_ft_sys_dialog_close");
+                break; // one sound however many left at once
+            }
+        }
     }
     // The host changed (they left, or gave it away): a sound and a notice, also for players with the F8 window closed.
     if (wasInRoom && prevHost >= 0 && s.hostId >= 0 && s.hostId != prevHost) {
@@ -409,6 +432,8 @@ static void OnStart(const json& d)
     s_finishSent = false;
     s.finishedSelf = false;
     s_lastScoreSent = 0;
+    s_toldLeftOut = false;
+    s.loadedAt = 0;
 
     if (s_hostStartSent) {
         // Echo of our own start: the host's song is already loading.
@@ -896,6 +921,7 @@ void Tick()
             if (!s_loadedSent) {
                 s_loadedSent = true;
                 s_holdSince = GetTickCount();
+                s.loadedAt = s_holdSince;
                 Send("loaded");
                 Log("mp: loaded, waiting for the others");
             }
@@ -932,7 +958,11 @@ void Tick()
         if (s.inRound && g_session.inSong && !s_finishSent && backlog < 3
             && now - s_lastScoreSent >= ScoreIntervalMs[s_scoreLevel]) {
             s_lastScoreSent = now;
-            Send("score", ScoreJson());
+            json msg = ScoreJson();
+            // inSong is true from the moment the song is launched, loading screen included; the song really plays from
+            // PvGameState outer = 1. A slow computer reaches that late, and the room's leaderboard shows it as lagging.
+            msg["started"] = sync::ReadState().outer == 1;
+            Send("score", std::move(msg));
         }
     }
 }

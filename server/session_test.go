@@ -248,3 +248,99 @@ func TestForceStart(t *testing.T) {
 	}
 	host.expectRoom(func(r RoomMsg) bool { return r.State == StatePlaying })
 }
+
+// A slow computer keeps sending scores from its loading screen: it is flagged as lagging when its song still isn't
+// playing 2 s (here 150 ms) after `go`, and the flag clears once it reports that the song started.
+func TestLateStartFlag(t *testing.T) {
+	url, hub := startServerHub(t)
+	hub.lagAfter = 150 * time.Millisecond
+	host := connect(t, url, "Host")
+	guest := connect(t, url, "Guest")
+	joinInOrder(host, guest, "r")
+	guest.send("ready", ReadyMsg{Ready: true})
+	host.expectRoom(func(r RoomMsg) bool { return r.Players[1].Ready })
+	host.send("start", validPick(54))
+	host.expect("start", nil)
+	guest.expect("start", nil)
+	host.send("loaded", nil)
+	guest.send("loaded", nil)
+	host.expect("go", nil)
+
+	yes, no := true, false
+	lagOf := func(s ScoresMsg, name string) bool {
+		for _, p := range s.Players {
+			if p.Name == name {
+				return p.Lag
+			}
+		}
+		return false
+	}
+	var s ScoresMsg
+	deadline := time.Now().Add(2 * time.Second)
+	flagged := false
+	for time.Now().Before(deadline) {
+		host.send("score", Score{Score: 10, Started: &yes})
+		guest.send("score", Score{Started: &no}) // alive, but the song hasn't started
+		s = ScoresMsg{}
+		host.expect("scores", &s)
+		if lagOf(s, "Host") {
+			t.Fatalf("a player that is playing was flagged: %+v", s)
+		}
+		if lagOf(s, "Guest") {
+			flagged = true
+			break
+		}
+	}
+	if !flagged {
+		t.Fatal("the late starter was never flagged")
+	}
+	guest.send("score", Score{Score: 5, Started: &yes})
+	for time.Now().Before(deadline) {
+		host.send("score", Score{Score: 10, Started: &yes})
+		s = ScoresMsg{}
+		host.expect("scores", &s)
+		if !lagOf(s, "Guest") {
+			return
+		}
+		guest.send("score", Score{Score: 6, Started: &yes})
+	}
+	t.Fatal("the flag never cleared once the song started")
+}
+
+// The host can start without the players still loading: they sit the round out and the countdown begins.
+func TestHostSkipsSlowLoaders(t *testing.T) {
+	url, hub := startServerHub(t)
+	hub.countStep = 5 * time.Millisecond
+	hub.loadTimeout = time.Hour // the load timeout must not be what starts the round
+	host := connect(t, url, "Host")
+	guest := connect(t, url, "Guest")
+	slow := connect(t, url, "Slow")
+	joinInOrder(host, guest, "r")
+	slow.send("join", JoinMsg{Room: "r"})
+	host.expectRoom(func(r RoomMsg) bool { return len(r.Players) == 3 })
+	guest.send("ready", ReadyMsg{Ready: true})
+	slow.send("ready", ReadyMsg{Ready: true})
+	host.expectRoom(func(r RoomMsg) bool { return len(r.Players) == 3 && r.Players[1].Ready && r.Players[2].Ready })
+	host.send("start", validPick(54))
+	host.expect("start", nil)
+	guest.expect("start", nil)
+	slow.expect("start", nil)
+
+	guest.send("skip", nil)
+	guest.expectError("only the host")
+	host.send("skip", nil) // the host hasn't loaded itself yet
+	host.expectError("load your own song first")
+	host.send("loaded", nil)
+	guest.send("loaded", nil)
+	host.expectRoom(func(r RoomMsg) bool { return r.Players[0].Loaded && r.Players[1].Loaded }) // both are in
+	host.send("skip", nil)
+	r := host.expectRoom(func(r RoomMsg) bool { return !r.Players[2].Playing && r.Players[0].Playing })
+	if !r.Players[1].Playing || r.Players[2].Name != "Slow" {
+		t.Fatalf("room = %+v", r)
+	}
+	host.expect("countdown", nil)
+	host.expect("go", nil)
+	slow.expect("go", nil) // the left-out player's game still gets released
+	host.send("skip", nil)
+	host.expectError("nobody is being waited for")
+}

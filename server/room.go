@@ -17,18 +17,20 @@ const (
 )
 
 type member struct {
-	c         *Client
-	ready     bool
-	playing   bool // part of the current round
-	finished  bool
-	loaded    bool // reached the loading barrier this round
-	live      Score
-	lastScore time.Time // when the last live score arrived this round (zero = none yet)
-	result    *Result
-	havePV    int // last `have` report: song id and whether this player has it (-1 = none yet)
-	haveOK    bool
-	away      bool        // connection lost; the slot is held until `expiry` fires or the player resumes
-	expiry    *time.Timer // set while away
+	c          *Client
+	ready      bool
+	playing    bool // part of the current round
+	finished   bool
+	loaded     bool // reached the loading barrier this round
+	live       Score
+	lastScore  time.Time // when the last live score arrived this round (zero = none yet)
+	startKnown bool      // this client reports whether its song is playing (`score.started`)
+	started    bool      // ...and it has reported that it is
+	result     *Result
+	havePV     int // last `have` report: song id and whether this player has it (-1 = none yet)
+	haveOK     bool
+	away       bool        // connection lost; the slot is held until `expiry` fires or the player resumes
+	expiry     *time.Timer // set while away
 }
 
 // Room holds one lobby. Every method takes the room lock; Client.Send never blocks,
@@ -497,6 +499,32 @@ func (r *Room) Handle(c *Client, env Envelope) {
 		r.pick.Title = cleanText(m.Title, MaxTitleLen)
 		r.broadcastState()
 
+	case "skip":
+		// The host doesn't want to wait any longer for the players still loading: they sit this round out.
+		switch {
+		case !isHost:
+			c.SendError("only the host can do that")
+		case r.state != StatePlaying || r.goSent || r.counting:
+			c.SendError("nobody is being waited for")
+		case !me.loaded:
+			c.SendError("load your own song first")
+		default:
+			var left []string
+			for _, m := range r.members {
+				if m.playing && !m.finished && !m.loaded {
+					m.playing = false
+					left = append(left, m.c.name)
+				}
+			}
+			if len(left) == 0 {
+				c.SendError("nobody is being waited for")
+				return
+			}
+			r.system("Starting without %s (too slow to load)", strings.Join(left, ", "))
+			r.broadcastState()
+			r.checkAllLoaded() // nobody is missing now: the countdown starts
+		}
+
 	case "loaded":
 		// This player's song is loaded and held on the loading screen.
 		if r.state != StatePlaying || !me.playing || me.loaded {
@@ -514,6 +542,10 @@ func (r *Room) Handle(c *Client, env Envelope) {
 		if r.state == StatePlaying && me.playing && !me.finished {
 			me.live = m
 			me.lastScore = time.Now()
+			if m.Started != nil {
+				me.startKnown = true
+				me.started = me.started || *m.Started // once playing, always playing
+			}
 		}
 
 	case "finish":
@@ -589,6 +621,7 @@ func (r *Room) startRound(isHost, force bool) string {
 		m.playing, m.finished, m.ready, m.loaded = !m.lacks(r.pick.PV), false, false, false
 		m.live, m.result = Score{}, nil
 		m.lastScore = time.Time{}
+		m.startKnown, m.started = false, false
 	}
 	log.Printf("room %q: round started, %s, %d players%s", r.name, describe(r.pick), len(r.members), map[bool]string{true: " (forced)"}[force])
 	r.system("Round started: %s", describe(r.pick))
@@ -712,7 +745,10 @@ func (r *Room) liveScores() ScoresMsg {
 					if since.IsZero() || since.Before(r.goAt) {
 						since = r.goAt
 					}
-					ls.Lag = m.away || now.Sub(since) > r.hub.lagAfter
+					// Silent for too long, or (clients that say) still loading well after everyone was released: a slow
+					// computer keeps sending zero scores from its loading screen, so silence alone would miss it.
+					late := m.startKnown && !m.started && now.Sub(r.goAt) > r.hub.lagAfter
+					ls.Lag = m.away || now.Sub(since) > r.hub.lagAfter || late
 				}
 			}
 			out.Players = append(out.Players, ls)

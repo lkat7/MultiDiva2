@@ -9,6 +9,7 @@
 #include "room_scene.h"
 #include "overlay.h"
 #include "../core/config.h"
+#include "../core/log.h"
 #include "../core/version.h"
 #include "../game/launch.h"
 #include "../game/memory.h"
@@ -1007,6 +1008,31 @@ static void DrawResults(const mp::State& s)
 }
 
 // Shown over NOW LOADING while this player's song is held at the loading barrier.
+// The host has waited on the loading screen for a while and somebody is still loading: offer to start without them.
+static bool SkipOffered(const mp::State& s)
+{
+    if (!mp::IsHost() || !s.loadedAt || GetTickCount() - s.loadedAt < 6000 || s.countdown > 0)
+        return false;
+    for (const mp::Player& p : s.players)
+        if (p.playing && !p.loaded)
+            return true;
+    return false;
+}
+
+// Enter while that offer is up (the game ignores it on the loading screen; only when the game window has focus).
+static void PollSkipKey(const mp::State& s)
+{
+    static bool s_wasDown = false;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(GetForegroundWindow(), &pid);
+    const bool down = pid == GetCurrentProcessId() && RealKeyDown(VK_RETURN);
+    if (down && !s_wasDown && SkipOffered(s)) {
+        Log("mp: host chose to start without the players still loading");
+        mp::SkipSlowPlayers();
+    }
+    s_wasDown = down;
+}
+
 static void DrawWaitingBanner(const mp::State& s)
 {
     int loaded = 0, total = 0;
@@ -1029,6 +1055,19 @@ static void DrawWaitingBanner(const mp::State& s)
         for (const mp::Player& p : s.players)
             if (p.playing && !p.loaded)
                 ImGui::TextColored(Dim, p.away ? "  %s (reconnecting)" : "  %s", p.name.c_str());
+        // The host can stop waiting: after a few seconds the card offers to start without the slow players (Enter).
+        if (SkipOffered(s)) {
+            std::string names;
+            int count = 0;
+            for (const mp::Player& p : s.players)
+                if (p.playing && !p.loaded && count++ < 3)
+                    names += (names.empty() ? "" : ", ") + p.name;
+            if (count > 3)
+                names += " +" + std::to_string(count - 3);
+            ImGui::Separator();
+            ImGui::TextColored(Gold, "%s %s taking time to load", names.c_str(), count == 1 ? "is" : "are");
+            ImGui::TextColored(Gold, "Press Enter to start without them");
+        }
     }
     ImGui::End();
 }
@@ -1132,6 +1171,7 @@ void DrawRoundOverlays()
     DrawPauseHint();
     const mp::State& s = mp::Get();
     if (s.inRound && sync::IsHolding()) {
+        PollSkipKey(s);
         if (s.countdown > 0)
             DrawCountdown(s);
         else

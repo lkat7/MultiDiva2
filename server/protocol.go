@@ -6,8 +6,8 @@ import "encoding/json"
 
 const (
 	ProtocolVersion = 1
-	ServerVersion   = "2.2.2" // release the server belongs to, shown in the client
-	LaunchBlockSize = 276     // stage entry [0x2C, 0x140), see docs/re-notes.md
+	ServerVersion   = "2.2.3-dev.1" // release the server belongs to, shown in the client
+	LaunchBlockSize = 276           // stage entry [0x2C, 0x140), see docs/re-notes.md
 	MaxNameLen      = 24
 	MaxRoomLen      = 32
 	MaxPlayers      = 8 // per room
@@ -86,6 +86,9 @@ type Score struct {
 	Safe       int     `json:"safe"`
 	Sad        int     `json:"sad"`
 	Worst      int     `json:"worst"`
+	// Started (score, optional): the song is really playing on this player's game (not still loading). Absent from
+	// older clients, which are only judged by whether their updates keep coming.
+	Started *bool `json:"started,omitempty"`
 }
 
 type Result struct {
@@ -188,7 +191,7 @@ type LiveScore struct {
 	Finished   bool    `json:"finished"`
 	Failed     bool    `json:"failed,omitempty"`  // finished by failing (life ran out, or quit)
 	Loading    bool    `json:"loading,omitempty"` // still on the loading screen (the round hasn't been released yet)
-	Lag        bool    `json:"lag,omitempty"`     // no score update for LagAfter, or the connection is lost
+	Lag        bool    `json:"lag,omitempty"`     // no score update for 2 s, or not playing yet 2 s after `go`, or the connection is lost
 }
 
 // CountdownMsg: the 3-2-1 before the round is released; `go` follows after the last number.

@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.2.3-dev.1 (06.11.2026)
+- **The wait for slow loaders is 90 s (was 30 s).** The server's `-load-timeout` default is now 90 s, so a slow
+  computer has time to finish loading. The client's own "the server never answered" release moved from 45 s to 120 s so
+  it doesn't fire first.
+- **Start without slow loaders.** When the host has loaded and others are still loading, after 6 s the waiting card
+  adds "X is taking time to load. Press Enter to start without them". Enter sends the new `skip` message: the server
+  leaves out whoever is still loading (they sit this round out, the room says so in chat), and the 3-2-1 begins at
+  once instead of waiting for the 90 s timeout. The left-out player sees "The host started without you: your song
+  plays on its own". Enter works from the keyboard only for now (no controller button).
+- **Late starters show as lagging.** A slow computer keeps sending zero scores from its loading screen, so the server saw
+  it as alive and never showed LAG while its song started late. Clients now report whether the song is really playing
+  (`score.started`), and a player who still isn't playing 2 s after `go` gets the LAG chip until it starts. Older
+  clients are still judged by their updates only.
+- **A sound when someone leaves the room** (also when kicked or timed out): the game's dialog-close sound. When the
+  host leaves, the new-host sound plays instead.
+
 ## 2.2.2 (05.11.2026)
 
 ### Added

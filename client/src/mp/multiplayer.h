@@ -83,6 +83,7 @@ struct State {
     int rounds = 0; // finished rounds with two or more players in this room (what Player::wins counts out of)
     std::string toast;         // a short notice drawn over the game (blocked start, new host...), see ToastAt
     uint32_t toastAt = 0;      // GetTickCount() when it was set (it shows for a few seconds)
+    uint32_t loadedAt = 0;     // GetTickCount() when our own song finished loading and we started waiting for the others
     int countdown = 0;       // 3, 2, 1 while the round is being released, else 0
     uint32_t countdownAt = 0; // GetTickCount() when that number arrived
     std::vector<Player> players;
@@ -120,6 +121,7 @@ void SendChat(const std::string& text);
 void GiveHost(int playerId); // host only
 void Kick(int playerId);     // host only
 void DismissResults();
+void SkipSlowPlayers(); // host only, while waiting on the loading screen: start without the players still loading
 void SetMode(const std::string& mode); // host only, lobby only: "score" or "accuracy"
 std::string ServerUrl();             // ws(s)://host:port/path of the current connection
 std::string AvatarUrl(int playerId); // custom avatar of a player on the current server (Player::hasAvatar)

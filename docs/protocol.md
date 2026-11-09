@@ -16,7 +16,7 @@ on the `start` broadcast; the host's client ignores it because it is already pla
 
 Every player's game (host included) then holds on NOW LOADING once the song is loaded and sends
 `loaded`. When all players in the round have loaded, the server sends `go` and everyone starts at
-the same moment. Players who leave or quit while loading don't block the others, and after 30 s
+the same moment. Players who leave or quit while loading don't block the others, and after 90 s
 the server sends `go` anyway.
 
 ## Room lifecycle
@@ -38,6 +38,7 @@ lobby --(host start, everyone ready, song picked)--> playing --(everyone finishe
 | `leave` | `{}` | back to no room |
 | `chat` | `{text}` | max 300 chars |
 | `ready` | `{ready}` | lobby only |
+| `skip` | `{}` | host only, while the round waits on the loading screen (after the host has loaded itself): the players still loading sit this round out and the countdown starts. Refused if nobody is being waited for |
 | `mode` | `{mode}` | host only, lobby only: how the room ranks players, `"score"` (default) or `"accuracy"` (the completion percentage; the score breaks a tie). It changes the order of the live `scores`, of the `results` and of who gets a round win |
 | `hover` | `{pv, title, difficulty?, edition?}` | host only, lobby only: the song highlighted in song select (`-1` = none), its title and the chart the host has selected for it (`difficulty` 0..3, `edition` 1 = the Extra chart); both optional, older clients send neither |
 | `have` | `{pv, ok}` | whether this player has song `pv` (the room's `focus`); players without it sit the round out |
@@ -47,7 +48,7 @@ lobby --(host start, everyone ready, song picked)--> playing --(everyone finishe
 | `start` | `{}` or pick data | host only. Needs a pick (or pick data in this message) and every player ready (host counts as ready). Sending pick data here does not clear ready flags. `force: true` skips the ready check (the host started anyway); the unready players get the song like the rest |
 | `title` | `{title}` | host only: the current pick's song title, sent once the host's game shows it |
 | `loaded` | `{}` | this player's song finished loading and is held on NOW LOADING |
-| `score` | `{score, combo, completion, cool, fine, safe, sad, worst}` | while playing, ~10 Hz. Live values |
+| `score` | `{score, combo, completion, cool, fine, safe, sad, worst, started?}` | while playing, ~10 Hz. Live values. `started` (optional): the song is really playing (not still loading); the leaderboard shows a player who hasn't started 2 s after `go` as lagging |
 | `finish` | `{result}` | song over. `result` = same fields as `score` plus `grade`, `maxCombo`, `failed` (bool) |
 
 ## Server -> client
@@ -60,7 +61,7 @@ lobby --(host start, everyone ready, song picked)--> playing --(everyone finishe
 | `start` | `{block, pv, difficulty, edition, title}` | auto-start now |
 | `countdown` | `{n}` | everyone has loaded (or the load timeout passed): `n` = 3, 2, 1, one step (0.5 s) apart, then `go`. Older clients ignore it and just start 1.5 s later |
 | `go` | `{}` | the countdown is over: release the hold and play |
-| `scores` | `{players: [{id, name, score, combo, completion, finished, failed?, loading?, lag?}]}` | ~10 Hz while playing, sorted by score. `loading`: still on the loading screen (before `go`). `lag`: after `go`, no live score for 2 s (or the connection is lost) |
+| `scores` | `{players: [{id, name, score, combo, completion, finished, failed?, loading?, lag?}]}` | ~10 Hz while playing, sorted by score. `loading`: still on the loading screen (before `go`). `lag`: after `go`, no live score for 2 s, or the song still isn't playing 2 s after `go` (`score.started`), or the connection is lost |
 | `results` | `{players: [{id, name, result, place}]}` | end of round, sorted by score |
 | `kicked` | `{room}` | the host removed you; you are in no room now |
 | `rooms` | `{rooms: [{name, host, players, playing}]}` | the open rooms, sent to players connected but in no room (after `welcome`, after leaving or a kick) and again ~150 ms after any room change; sorted by name |
